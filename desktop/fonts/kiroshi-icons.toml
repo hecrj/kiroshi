@@ -1,0 +1,6 @@
+module = "icon"
+
+[glyphs]
+checkmark = "fontawesome-ok"
+hidden = "fontawesome-eye-off"
+visible = "fontawesome-eye"

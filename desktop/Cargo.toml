@@ -1,0 +1,17 @@
+[package]
+name = "kiroshi_desktop"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kiroshi.workspace = true
+num-traits.workspace = true
+
+iced.workspace = true
+iced.features = ["tokio", "image", "web-colors"]
+
+tokio.workspace = true
+tokio.features = ["fs"]
+
+[build-dependencies]
+iced_fontello = "0.13"
