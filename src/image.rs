@@ -12,7 +12,6 @@ pub struct Image {
     pub bytes: Bytes,
     pub size: Size,
     pub definition: Definition,
-    pub upscale_factor: f32,
 }
 
 impl Image {
@@ -89,7 +88,6 @@ impl Image {
                         bytes,
                         size,
                         definition: definition.clone(),
-                        upscale_factor: 2.0,
                     }
                 };
 
