@@ -5,16 +5,16 @@ mod widget;
 
 use crate::kiroshi::detail;
 use crate::kiroshi::image;
+use crate::kiroshi::model;
 use crate::kiroshi::{Detail, Error, Image, Model, Quality, Sampler, Seed, Server, Steps};
 use crate::widget::{container, labeled_slider, logo, optic};
 
 use iced::padding;
 use iced::widget::{
-    button, checkbox, column, hover, pick_list, row, stack, text, text_editor, tooltip, Column,
+    button, checkbox, column, hover, pick_list, row, stack, text, text_editor, text_input, tooltip,
+    Column,
 };
 use iced::{color, Center, Color, Element, Fill, FillPortion, Font, Task, Theme};
-
-use std::path::PathBuf;
 
 fn main() -> iced::Result {
     iced::application(Kiroshi::title, Kiroshi::update, Kiroshi::view)
@@ -26,11 +26,12 @@ fn main() -> iced::Result {
 }
 
 struct Kiroshi {
-    model_directory: PathBuf,
     models: Vec<Model>,
     model: Option<Model>,
+    model_settings: model::Settings,
     quality: Quality,
     sampler: Sampler,
+    seed: String,
     prompt: text_editor::Content,
     negative_prompt: text_editor::Content,
     image: Option<optic::Handle>,
@@ -49,9 +50,12 @@ struct Kiroshi {
 enum Message {
     ServerBooted(Result<Server, Error>),
     ModelsListed(Result<Vec<Model>, Error>),
+    ModelSettingsFetched(Result<model::Settings, Error>),
     ModelSelected(Model),
     QualitySelected(Quality),
     SamplerSelected(Sampler),
+    SeedChanged(String),
+    RandomizeSeed,
     ToggleTargetBounds,
     TargetOpened(Target),
     DetailToggled(Target, bool),
@@ -64,17 +68,16 @@ enum Message {
 
 impl Kiroshi {
     pub fn new() -> (Self, Task<Message>) {
-        let model_directory = PathBuf::from("/home/hector/projects/ai/text_to_image");
-
         (
             Self {
-                model_directory: model_directory.clone(),
                 models: Vec::new(),
                 model: None,
+                model_settings: model::Settings::default(),
                 quality: Quality::default(),
                 sampler: Sampler::default(),
                 prompt: text_editor::Content::new(),
                 negative_prompt: text_editor::Content::new(),
+                seed: Seed::random().to_string(),
                 show_target_bounds: false,
                 face_detail_enabled: false,
                 hand_detail_enabled: false,
@@ -86,8 +89,9 @@ impl Kiroshi {
                 theme: Theme::TokyoNight,
             },
             Task::batch([
-                Task::perform(Server::run(model_directory.clone()), Message::ServerBooted),
-                Task::perform(Model::list(model_directory), Message::ModelsListed),
+                Task::perform(Server::run(), Message::ServerBooted),
+                Task::perform(Model::list(), Message::ModelsListed),
+                Task::perform(model::Settings::fetch(), Message::ModelSettingsFetched),
             ]),
         )
     }
@@ -104,6 +108,11 @@ impl Kiroshi {
 
                 Task::none()
             }
+            Message::ModelSettingsFetched(Ok(settings)) => {
+                self.model_settings = settings;
+
+                Task::none()
+            }
             Message::ModelSelected(model) => {
                 self.model = Some(model);
 
@@ -116,6 +125,16 @@ impl Kiroshi {
             }
             Message::SamplerSelected(sampler) => {
                 self.sampler = sampler;
+
+                Task::none()
+            }
+            Message::SeedChanged(seed) => {
+                self.seed = seed;
+
+                Task::none()
+            }
+            Message::RandomizeSeed => {
+                self.seed = Seed::random().to_string();
 
                 Task::none()
             }
@@ -168,16 +187,43 @@ impl Kiroshi {
                     return Task::none();
                 };
 
+                let seed = {
+                    let sanitized: String = self.seed.chars().filter(|c| c.is_numeric()).collect();
+
+                    sanitized
+                        .parse::<u64>()
+                        .ok()
+                        .map(Seed::from)
+                        .unwrap_or_else(Seed::random)
+                };
+
+                self.seed = seed.value().to_string();
+
+                let metadata = self.model_settings.get(&model);
+
+                let prompt = [self.prompt.text().trim(), &metadata.prompt_template]
+                    .join(", ")
+                    .trim_start_matches(", ")
+                    .to_owned();
+
+                let negative_prompt = [
+                    self.negative_prompt.text().trim(),
+                    &metadata.negative_prompt_template,
+                ]
+                .join(", ")
+                .trim_start_matches(", ")
+                .to_owned();
+
                 Task::run(
                     Image::generate(
                         image::Definition {
                             model: model.clone(),
-                            prompt: self.prompt.text().trim().to_owned(),
-                            negative_prompt: self.negative_prompt.text().trim().to_owned(),
+                            prompt,
+                            negative_prompt,
                             quality: self.quality,
                             sampler: self.sampler,
+                            seed,
                             size: Image::DEFAULT_SIZE,
-                            seed: Seed::random(),
                             steps: Steps::default(),
                             face_detail: self.face_detail_enabled.then_some(self.face_detail),
                             hand_detail: self.hand_detail_enabled.then_some(self.hand_detail),
@@ -202,6 +248,7 @@ impl Kiroshi {
             }
             Message::ServerBooted(Err(error))
             | Message::ModelsListed(Err(error))
+            | Message::ModelSettingsFetched(Err(error))
             | Message::ImageGenerated(Err(error)) => {
                 dbg!(error);
 
@@ -241,6 +288,23 @@ impl Kiroshi {
                     "Sampler",
                     pick_list(Sampler::ALL, Some(self.sampler), Message::SamplerSelected)
                         .width(Fill),
+                );
+
+                let seed = with_label(
+                    "Seed",
+                    stack![
+                        text_input("Type a numeric seed...", &self.seed)
+                            .font(Font::MONOSPACE)
+                            .padding(padding::all(5).right(25))
+                            .on_input(Message::SeedChanged),
+                        container(
+                            button(icon::refresh())
+                                .on_press(Message::RandomizeSeed)
+                                .style(button::text)
+                        )
+                        .align_right(Fill)
+                        .center_y(Fill),
+                    ],
                 );
 
                 let detailing = {
@@ -366,7 +430,7 @@ impl Kiroshi {
 
                 column![
                     row![models, quality].spacing(10),
-                    sampler,
+                    row![sampler, seed].spacing(10),
                     detailing,
                     generate
                 ]
@@ -414,10 +478,10 @@ impl Kiroshi {
             .spacing(10)
             .padding(10);
 
-        let navbar = container(row![logo(20)].padding([0, 10]))
+        let navbar = container(row![logo(20)].padding([2, 10]))
             .width(Fill)
             .padding(padding::top(5))
-            .style(|_theme| container::Style::default().background(color!(0x000000, 0.4)));
+            .style(|_theme| container::Style::default().background(color!(0x000000, 0.5)));
 
         column![content, navbar].into()
     }

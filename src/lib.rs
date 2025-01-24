@@ -1,5 +1,4 @@
 mod error;
-mod model;
 mod quality;
 mod rectangle;
 mod sampler;
@@ -12,6 +11,7 @@ mod stream;
 pub mod detail;
 pub mod image;
 pub mod lora;
+pub mod model;
 
 pub use detail::Detail;
 pub use error::Error;

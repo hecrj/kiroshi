@@ -1,10 +1,11 @@
+use crate::model;
 use crate::Error;
 
-use std::path::Path;
 use std::sync::Arc;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use tokio::fs;
 use tokio::io;
 use tokio::net;
 use tokio::process;
@@ -20,14 +21,17 @@ pub struct Server {
 struct Container(String);
 
 impl Server {
-    pub async fn run(model_directory: impl AsRef<Path>) -> Result<Server, Error> {
+    pub async fn run() -> Result<Server, Error> {
+        let models_dir = model::directory()?;
+        fs::create_dir_all(&models_dir).await?;
+
         let mut process = process::Command::new("docker")
             .arg("create")
             .args(["-t", "--rm"])
             .args(["--gpus", "all"])
             .args(["-p", "9149:9149"])
             .args(["-v", {
-                let model_dir = model_directory.as_ref().to_string_lossy().into_owned();
+                let model_dir = models_dir.to_string_lossy().into_owned();
 
                 &format!(
                     "{host}:{container}",

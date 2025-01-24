@@ -6,6 +6,9 @@ pub enum Error {
     IOFailed(Arc<io::Error>),
     SerializationFailed(Arc<serde_json::Error>),
     DockerFailed,
+    DataDirectoryNotFound,
+    ConfigDirectoryNotFound,
+    InvalidModelSettings(toml::de::Error),
 }
 
 impl From<io::Error> for Error {
