@@ -211,20 +211,29 @@ impl Kiroshi {
 
                 self.seed = seed.value().to_string();
 
+                let format_prompt = |prompt: &mut text_editor::Content, template| {
+                    *prompt = text_editor::Content::with_text(
+                        &prompt
+                            .text()
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|line| !line.is_empty())
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                    );
+
+                    let user_prompt = prompt.text().trim().replace("\n", ", ");
+
+                    [user_prompt, template]
+                        .join(", ")
+                        .trim_start_matches(", ")
+                        .to_owned()
+                };
+
                 let metadata = self.model_settings.get(&model);
-
-                let prompt = [self.prompt.text().trim(), &metadata.prompt_template]
-                    .join(", ")
-                    .trim_start_matches(", ")
-                    .to_owned();
-
-                let negative_prompt = [
-                    self.negative_prompt.text().trim(),
-                    &metadata.negative_prompt_template,
-                ]
-                .join(", ")
-                .trim_start_matches(", ")
-                .to_owned();
+                let prompt = format_prompt(&mut self.prompt, metadata.prompt_template);
+                let negative_prompt =
+                    format_prompt(&mut self.negative_prompt, metadata.negative_prompt_template);
 
                 Task::run(
                     Image::generate(
