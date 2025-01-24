@@ -6,7 +6,9 @@ mod widget;
 use crate::kiroshi::detail;
 use crate::kiroshi::image;
 use crate::kiroshi::model;
-use crate::kiroshi::{Detail, Error, Image, Model, Quality, Sampler, Seed, Server, Steps};
+use crate::kiroshi::{
+    Detail, Error, Image, Model, Quality, Rectangle, Sampler, Seed, Server, Steps,
+};
 use crate::widget::{container, labeled_slider, logo, optic};
 
 use iced::padding;
@@ -35,6 +37,9 @@ struct Kiroshi {
     prompt: text_editor::Content,
     negative_prompt: text_editor::Content,
     image: Option<optic::Handle>,
+    previous_image: Option<optic::Handle>,
+    faces: Vec<Rectangle>,
+    hands: Vec<Rectangle>,
     show_target_bounds: bool,
     face_detail_enabled: bool,
     hand_detail_enabled: bool,
@@ -78,13 +83,16 @@ impl Kiroshi {
                 prompt: text_editor::Content::new(),
                 negative_prompt: text_editor::Content::new(),
                 seed: Seed::random().to_string(),
+                image: None,
+                previous_image: None,
+                faces: Vec::new(),
+                hands: Vec::new(),
                 show_target_bounds: false,
                 face_detail_enabled: false,
                 hand_detail_enabled: false,
                 face_detail: Detail::default(),
                 hand_detail: Detail::default(),
                 active_target: Target::Face,
-                image: None,
                 server: None,
                 theme: Theme::TokyoNight,
             },
@@ -187,6 +195,10 @@ impl Kiroshi {
                     return Task::none();
                 };
 
+                self.previous_image = self.image.clone();
+                self.faces.clear();
+                self.hands.clear();
+
                 let seed = {
                     let sanitized: String = self.seed.chars().filter(|c| c.is_numeric()).collect();
 
@@ -239,8 +251,14 @@ impl Kiroshi {
                     image::Generation::Sampling { image, .. } => {
                         self.image = Some(optic::Handle::new(image));
                     }
-                    image::Generation::Finished { image, .. } => {
+                    image::Generation::Finished {
+                        image,
+                        faces,
+                        hands,
+                    } => {
                         self.image = Some(optic::Handle::new(image));
+                        self.faces = faces;
+                        self.hands = hands;
                     }
                 }
 
@@ -259,7 +277,7 @@ impl Kiroshi {
 
     pub fn view(&self) -> Element<Message> {
         let image_and_controls = {
-            let image = if let Some(image) = &self.image {
+            let preview = if let Some(image) = &self.image {
                 optic::original(image)
             } else {
                 container(optic::placeholder())
@@ -441,13 +459,34 @@ impl Kiroshi {
                 container(controls)
                     .padding(10)
                     .style(container::translucent),
-            )
-            .padding(10);
+            );
 
-            if self.image.is_some() {
-                hover(image, controls.align_bottom(Fill))
+            if let Some(handle) = &self.image {
+                let small_preview = container(
+                    container(if self.show_target_bounds {
+                        stack![
+                            optic::small(handle),
+                            targets(handle.image(), &self.faces, &self.hands)
+                        ]
+                        .into()
+                    } else if let Some(previous_image) = &self.previous_image {
+                        hover(optic::small(handle), optic::small(previous_image))
+                    } else {
+                        optic::small(handle)
+                    })
+                    .style(container::translucent)
+                    .padding(10),
+                )
+                .align_right(Fill);
+
+                hover(
+                    preview,
+                    container(column![small_preview, controls].spacing(10))
+                        .padding(10)
+                        .align_bottom(Fill),
+                )
             } else {
-                stack![image, controls.center_y(Fill)].into()
+                stack![preview, controls.center_y(Fill).padding(10)].into()
             }
         };
 
@@ -496,7 +535,7 @@ impl Kiroshi {
 }
 
 fn with_label<'a>(label: &'a str, element: impl Into<Element<'a, Message>>) -> Column<'a, Message> {
-    column![text(label), element.into()].spacing(5)
+    column![text(label).size(12).font(Font::MONOSPACE), element.into()].spacing(5)
 }
 
 fn detail_controls(detail: Detail) -> Element<'static, Detail> {
@@ -549,4 +588,93 @@ impl Target {
             Target::Hand => "Hands",
         }
     }
+}
+
+fn targets<'a>(
+    image: &'a Image,
+    faces: &'a [Rectangle],
+    hands: &'a [Rectangle],
+) -> Element<'a, Message> {
+    use iced::mouse;
+    use iced::widget::canvas;
+    use iced::{Bottom, Point, Renderer, Size, Theme, Vector};
+
+    struct Targets<'a> {
+        image: &'a Image,
+        faces: &'a [Rectangle],
+        hands: &'a [Rectangle],
+    }
+
+    impl canvas::Program<Message> for Targets<'_> {
+        type State = ();
+
+        fn draw(
+            &self,
+            _state: &Self::State,
+            renderer: &Renderer,
+            theme: &Theme,
+            bounds: iced::Rectangle,
+            _cursor: mouse::Cursor,
+        ) -> Vec<canvas::Geometry> {
+            let size = bounds.size();
+            let scale = size.width as f32 / self.image.size.width as f32;
+            let palette = theme.extended_palette();
+
+            let mut frame = canvas::Frame::new(renderer, size);
+            frame.scale(scale);
+
+            let draw_target =
+                |frame: &mut canvas::Frame, label: &str, bounds: &Rectangle, color| {
+                    frame.fill_rectangle(
+                        Point::new(bounds.x, bounds.y),
+                        Size::new(bounds.width, bounds.height),
+                        color,
+                    );
+
+                    for (color, offset) in [
+                        (Color::BLACK, Vector::new(5.0, 5.0)),
+                        (Color::WHITE, Vector::ZERO),
+                    ] {
+                        frame.fill_text(canvas::Text {
+                            content: label.to_owned(),
+                            position: Point::new(bounds.x, bounds.y) + offset,
+                            vertical_alignment: Bottom,
+                            color,
+                            size: (12.0 / scale).into(),
+                            font: Font::MONOSPACE,
+                            ..canvas::Text::default()
+                        });
+                    }
+                };
+
+            for face in self.faces {
+                draw_target(
+                    &mut frame,
+                    "Face",
+                    face,
+                    palette.background.base.color.scale_alpha(0.4),
+                );
+            }
+
+            for hand in self.hands {
+                draw_target(
+                    &mut frame,
+                    "Hand",
+                    hand,
+                    palette.primary.base.color.scale_alpha(0.3),
+                );
+            }
+
+            vec![frame.into_geometry()]
+        }
+    }
+
+    canvas(Targets {
+        image,
+        faces,
+        hands,
+    })
+    .width(Fill)
+    .height(Fill)
+    .into()
 }

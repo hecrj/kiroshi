@@ -3,6 +3,7 @@ use crate::kiroshi::Image;
 use iced::widget::{container, horizontal_space, image};
 use iced::Element;
 
+#[derive(Debug, Clone)]
 pub struct Handle {
     raw: image::Handle,
     image: Image,
@@ -15,6 +16,10 @@ impl Handle {
             image,
         }
     }
+
+    pub fn image(&self) -> &Image {
+        &self.image
+    }
 }
 
 pub fn original<'a, Message>(handle: &Handle) -> Element<'a, Message> {
@@ -23,6 +28,15 @@ pub fn original<'a, Message>(handle: &Handle) -> Element<'a, Message> {
     image(handle.raw.clone())
         .width(size.width as f32)
         .height(size.height as f32)
+        .into()
+}
+
+pub fn small<'a, Message>(handle: &Handle) -> Element<'a, Message> {
+    let size = handle.image.definition.size;
+
+    image(handle.raw.clone())
+        .width(size.width as f32 / 2.0)
+        .height(size.height as f32 / 2.0)
         .into()
 }
 
