@@ -12,6 +12,7 @@ pub struct Model(PathBuf);
 
 impl Model {
     pub async fn list() -> Result<Vec<Self>, Error> {
+        // TODO: Run on the server
         let mut models = Vec::new();
         let mut entries = fs::read_dir(directory()?).await?;
 

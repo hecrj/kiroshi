@@ -7,19 +7,21 @@ use crate::kiroshi::detail;
 use crate::kiroshi::image;
 use crate::kiroshi::model;
 use crate::kiroshi::{
-    Detail, Error, Image, Model, Quality, Rectangle, Sampler, Seed, Server, Steps,
+    Detail, Error, Image, Model, Quality, Rectangle, Sampler, Seed, Server, Stats, Steps,
 };
-use crate::widget::{container, labeled_slider, logo, optic};
+use crate::widget::{container, gauge, indicator, labeled_slider, logo, optic};
 
 use iced::padding;
+use iced::time;
 use iced::widget::{
-    button, checkbox, column, hover, pick_list, row, stack, text, text_editor, text_input, tooltip,
-    Column,
+    button, checkbox, column, horizontal_space, hover, pick_list, row, stack, text, text_editor,
+    text_input, tooltip, Column,
 };
-use iced::{color, Center, Color, Element, Fill, FillPortion, Font, Task, Theme};
+use iced::{color, Center, Color, Element, Fill, FillPortion, Font, Subscription, Task, Theme};
 
 fn main() -> iced::Result {
     iced::application(Kiroshi::title, Kiroshi::update, Kiroshi::view)
+        .subscription(Kiroshi::subscription)
         .theme(Kiroshi::theme)
         .window_size((1024.0, 820.0))
         .font(icon::FONT)
@@ -48,12 +50,14 @@ struct Kiroshi {
     active_target: Target,
 
     server: Option<Server>,
+    stats: Option<Stats>,
     theme: Theme,
 }
 
 #[derive(Debug, Clone)]
 enum Message {
     ServerBooted(Result<Server, Error>),
+    StatsFetched(Result<Stats, Error>),
     ModelsListed(Result<Vec<Model>, Error>),
     ModelSettingsFetched(Result<model::Settings, Error>),
     ModelSelected(Model),
@@ -94,6 +98,7 @@ impl Kiroshi {
                 hand_detail: Detail::default(),
                 active_target: Target::Face,
                 server: None,
+                stats: None,
                 theme: Theme::TokyoNight,
             },
             Task::batch([
@@ -108,6 +113,11 @@ impl Kiroshi {
         match message {
             Message::ServerBooted(Ok(server)) => {
                 self.server = Some(server);
+
+                Task::none()
+            }
+            Message::StatsFetched(Ok(stats)) => {
+                self.stats = Some(stats);
 
                 Task::none()
             }
@@ -274,6 +284,7 @@ impl Kiroshi {
                 Task::none()
             }
             Message::ServerBooted(Err(error))
+            | Message::StatsFetched(Err(error))
             | Message::ModelsListed(Err(error))
             | Message::ModelSettingsFetched(Err(error))
             | Message::ImageGenerated(Err(error)) => {
@@ -526,16 +537,47 @@ impl Kiroshi {
             .spacing(10)
             .padding(10);
 
-        let navbar = container(row![logo(20)].padding([2, 10]))
-            .width(Fill)
-            .padding(padding::top(5))
-            .style(|_theme| container::Style::default().background(color!(0x000000, 0.5)));
+        let status_bar = {
+            let status = indicator("Online", "Offline", self.server.is_some());
 
-        column![content, navbar].into()
+            let stats = if let Some(stats) = self.stats {
+                let gpu_temperature = gauge(
+                    "TEMP",
+                    stats.gpu_temperature,
+                    stats.gpu_temperature.celsius as f32 / 90.0,
+                );
+
+                let vram_usage = gauge(
+                    "VRAM",
+                    format!("{} / {}", stats.vram_usage.used(), stats.vram_usage.total()),
+                    stats.vram_usage.ratio(),
+                );
+
+                row![vram_usage, gpu_temperature].spacing(10)
+            } else {
+                row![]
+            };
+
+            container(
+                row![logo(20), horizontal_space(), status, stats]
+                    .spacing(10)
+                    .padding([5, 10])
+                    .align_y(Center),
+            )
+            .height(30)
+            .width(Fill)
+            .style(|_theme| container::Style::default().background(color!(0x000000, 0.5)))
+        };
+
+        column![content, status_bar].into()
     }
 
     pub fn title(&self) -> String {
         "Kiroshi".to_owned()
+    }
+
+    pub fn subscription(&self) -> Subscription<Message> {
+        time::repeat(Stats::fetch, time::seconds(2)).map(Message::StatsFetched)
     }
 
     pub fn theme(&self) -> Theme {

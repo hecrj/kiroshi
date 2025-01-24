@@ -1,14 +1,14 @@
 use crate::model;
 use crate::Error;
 
-use std::sync::Arc;
-
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use tokio::fs;
 use tokio::io;
 use tokio::net;
 use tokio::process;
+
+use std::sync::Arc;
 
 const ADDRESS: &'static str = "127.0.0.1:9149";
 

@@ -9,6 +9,7 @@ pub enum Error {
     DataDirectoryNotFound,
     ConfigDirectoryNotFound,
     InvalidModelSettings(toml::de::Error),
+    InvalidOutput(String),
 }
 
 impl From<io::Error> for Error {

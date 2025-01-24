@@ -14,7 +14,7 @@ kiroshi = { path = "." }
 bytes = "1"
 dirs = "6"
 futures = "0.3"
-iced = { git = "https://github.com/iced-rs/iced.git", rev = "75a6f32a5ef49bb8e6d16506d84b07822a33c41b" }
+iced = { git = "https://github.com/iced-rs/iced.git", rev = "ca61706cfd9da6306626793443f90ad2bf2dab51" }
 num-traits = "0.2"
 rand = "0.8"
 serde = "1"
