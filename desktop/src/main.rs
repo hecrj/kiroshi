@@ -12,6 +12,7 @@ use crate::kiroshi::{
 use crate::widget::{container, gauge, indicator, labeled_slider, logo, optic};
 
 use iced::padding;
+use iced::task;
 use iced::time;
 use iced::widget::{
     button, checkbox, column, horizontal_space, hover, pick_list, row, stack, text, text_editor,
@@ -40,6 +41,7 @@ struct Kiroshi {
     negative_prompt: text_editor::Content,
     image: Option<optic::Handle>,
     previous_image: Option<optic::Handle>,
+    generation: Option<task::Handle>,
     faces: Vec<Rectangle>,
     hands: Vec<Rectangle>,
     show_target_bounds: bool,
@@ -72,6 +74,7 @@ enum Message {
     PromptEdited(text_editor::Action),
     NegativePromptEdited(text_editor::Action),
     Generate,
+    Cancel,
     ImageGenerated(Result<image::Generation, Error>),
 }
 
@@ -89,6 +92,7 @@ impl Kiroshi {
                 seed: Seed::random().to_string(),
                 image: None,
                 previous_image: None,
+                generation: None,
                 faces: Vec::new(),
                 hands: Vec::new(),
                 show_target_bounds: false,
@@ -245,7 +249,7 @@ impl Kiroshi {
                 let negative_prompt =
                     format_prompt(&mut self.negative_prompt, metadata.negative_prompt_template);
 
-                Task::run(
+                let (generate, generation) = Task::run(
                     Image::generate(
                         image::Definition {
                             model: model.clone(),
@@ -264,6 +268,16 @@ impl Kiroshi {
                     ),
                     Message::ImageGenerated,
                 )
+                .abortable();
+
+                self.generation = Some(generation.abort_on_drop());
+
+                generate
+            }
+            Message::Cancel => {
+                self.generation = None;
+
+                Task::none()
             }
             Message::ImageGenerated(Ok(generation)) => {
                 match generation {
@@ -278,6 +292,7 @@ impl Kiroshi {
                         self.image = Some(optic::Handle::new(image));
                         self.faces = faces;
                         self.hands = hands;
+                        self.generation = None;
                     }
                 }
 
@@ -286,8 +301,16 @@ impl Kiroshi {
             Message::ServerBooted(Err(error))
             | Message::StatsFetched(Err(error))
             | Message::ModelsListed(Err(error))
-            | Message::ModelSettingsFetched(Err(error))
-            | Message::ImageGenerated(Err(error)) => {
+            | Message::ModelSettingsFetched(Err(error)) => {
+                // TODO: Logging
+                dbg!(error);
+
+                Task::none()
+            }
+            Message::ImageGenerated(Err(error)) => {
+                self.generation = None;
+
+                // TODO: Logging
                 dbg!(error);
 
                 Task::none()
@@ -463,8 +486,14 @@ impl Kiroshi {
                     column![tabs, form]
                 };
 
-                let generate = button(text("Generate").width(Fill).center())
-                    .on_press_maybe(self.model.is_some().then_some(Message::Generate));
+                let generate = if self.generation.is_none() {
+                    button(text("Generate").width(Fill).center())
+                        .on_press_maybe(self.model.is_some().then_some(Message::Generate))
+                } else {
+                    button(text("Cancel").width(Fill).center())
+                        .on_press(Message::Cancel)
+                        .style(button::danger)
+                };
 
                 column![
                     row![models, quality].spacing(10),
