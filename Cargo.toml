@@ -14,9 +14,12 @@ kiroshi = { path = "." }
 bytes = "1"
 dirs = "6"
 futures = "0.3"
-iced = { git = "https://github.com/iced-rs/iced.git", rev = "ca61706cfd9da6306626793443f90ad2bf2dab51" }
+iced = { git = "https://github.com/iced-rs/iced.git", rev = "24905ebd5d791dce11119a96f1487ee75276a6d0" }
+image = "0.25"
+lilt = "0.7"
 num-traits = "0.2"
 rand = "0.8"
+reqwest = "0.12"
 serde = "1"
 serde_json = "1"
 tokio = "1"
@@ -36,3 +39,7 @@ serde.features = ["derive"]
 
 tokio.workspace = true
 tokio.features = ["process", "net", "io-util"]
+
+[profile.dev.package.image]
+opt-level = 3
+debug-assertions = false

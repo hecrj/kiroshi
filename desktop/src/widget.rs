@@ -1,10 +1,12 @@
+mod diffused_text;
+
 pub mod container;
 pub mod optic;
 
 pub use container::Container;
+pub use diffused_text::DiffusedText;
 
-use std::ops::RangeInclusive;
-
+use iced::advanced;
 use iced::border;
 use iced::font;
 use iced::widget::{
@@ -12,20 +14,31 @@ use iced::widget::{
 };
 use iced::{Center, Element, Fill, FillPortion, Font, Pixels, Theme};
 
+use std::ops::RangeInclusive;
+
 pub const LOGO_FONT: &'static [u8] = include_bytes!("../fonts/Orbitron-Medium.ttf");
 
 pub fn container<'a, Message>(element: impl Into<Element<'a, Message>>) -> Container<'a, Message> {
     Container::new(element)
 }
 
-pub fn logo<'a, Message>(size: impl Into<Pixels>) -> Element<'a, Message> {
-    text("kiroshi")
-        .size(size)
-        .font(Font {
-            weight: font::Weight::Medium,
-            ..Font::with_name("Orbitron")
-        })
-        .into()
+pub fn diffused_text<'a, Theme, Renderer>(
+    fragment: impl text::IntoFragment<'a>,
+) -> DiffusedText<'a, Theme, Renderer>
+where
+    Theme: text::Catalog,
+    Renderer: advanced::text::Renderer,
+{
+    DiffusedText::new(fragment)
+}
+
+pub fn logo<'a, Message: 'a>(size: impl Into<Pixels>) -> Element<'a, Message> {
+    container(text("kiroshi").size(size).font(Font {
+        weight: font::Weight::Medium,
+        ..Font::with_name("Orbitron")
+    }))
+    .padding([5, 0])
+    .into()
 }
 
 pub fn labeled_slider<'a, T, Message: Clone + 'static>(
