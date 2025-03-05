@@ -1,3 +1,4 @@
+use iced::futures::channel::mpsc;
 use iced::futures::{SinkExt, Stream};
 use iced::stream;
 use serde::Deserialize;
@@ -21,7 +22,7 @@ pub struct Model {
 
 impl Model {
     pub fn list() -> impl Stream<Item = Result<Vec<Self>, Error>> {
-        stream::try_channel(1, move |mut sender| async move {
+        stream::try_channel(1, move |mut sender: mpsc::Sender<_>| async move {
             let cache = dirs::cache_dir()
                 .map(|cache| cache.join("kiroshi").join("models").join("all.json"));
 

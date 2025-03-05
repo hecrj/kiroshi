@@ -1,10 +1,13 @@
-use crate::animation::Animation;
+use crate::animation::{Animation, Easing};
 use crate::civitai::{Error, Id, Model, Rgba};
 use crate::widget::{container, diffused_text};
 
 use iced::padding;
 use iced::time::Instant;
-use iced::widget::{bottom, center_x, horizontal_space, image, pop, row, scrollable, stack, text};
+use iced::widget::{
+    bottom, button, center_x, horizontal_space, image, mouse_area, pop, row, scrollable, stack,
+    text,
+};
 use iced::window;
 use iced::{Border, Bottom, ContentFit, Element, Fill, Font, Subscription, Task};
 
@@ -13,15 +16,22 @@ use std::collections::HashMap;
 pub struct Models {
     models: Vec<Model>,
     images: HashMap<Id, image::Handle>,
-    animations: HashMap<Id, Animation<bool>>,
+    effects: HashMap<Id, Effect>,
     now: Instant,
+}
+
+struct Effect {
+    fade_in: Animation<bool>,
+    zoom: Animation<bool>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
     ModelsListed(Result<Vec<Model>, Error>),
-    ImageDownloaded(Id, Result<Rgba, Error>),
     ModelPopped(Id),
+    ShowModel(Id),
+    ImageDownloaded(Id, Result<Rgba, Error>),
+    ImageHovered(Id, bool),
     Animate(Instant),
 }
 
@@ -31,7 +41,7 @@ impl Models {
             Self {
                 models: Vec::new(),
                 images: HashMap::new(),
-                animations: HashMap::new(),
+                effects: HashMap::new(),
                 now: Instant::now(),
             },
             Task::run(Model::list(), Message::ModelsListed),
@@ -39,10 +49,9 @@ impl Models {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        let is_animating = self
-            .animations
-            .values()
-            .any(|animation| animation.in_progress(self.now));
+        let is_animating = self.effects.values().any(|effect| {
+            effect.fade_in.in_progress(self.now) || effect.zoom.in_progress(self.now)
+        });
 
         if is_animating {
             window::frames().map(Message::Animate)
@@ -55,23 +64,6 @@ impl Models {
         match message {
             Message::ModelsListed(Ok(models)) => {
                 self.models = models;
-
-                Task::none()
-            }
-            Message::ImageDownloaded(model, result) => {
-                match result {
-                    Ok(image) => {
-                        let handle =
-                            image::Handle::from_rgba(image.width, image.height, image.pixels);
-                        self.images.insert(model, handle);
-                    }
-                    Err(error) => {
-                        dbg!(error);
-                    }
-                }
-
-                let animation = Animation::new(false).slow().go(true);
-                self.animations.insert(model, animation);
 
                 Task::none()
             }
@@ -90,6 +82,39 @@ impl Models {
                 } else {
                     Task::none()
                 }
+            }
+            Message::ShowModel(model) => {
+                dbg!(model);
+
+                Task::none()
+            }
+            Message::ImageDownloaded(model, result) => {
+                match result {
+                    Ok(image) => {
+                        let handle =
+                            image::Handle::from_rgba(image.width, image.height, image.pixels);
+                        self.images.insert(model, handle);
+                    }
+                    Err(error) => {
+                        dbg!(error);
+                    }
+                }
+
+                let effect = Effect {
+                    fade_in: Animation::new(false).slow().go(true),
+                    zoom: Animation::new(false).quick().easing(Easing::EaseInOut),
+                };
+
+                self.effects.insert(model, effect);
+
+                Task::none()
+            }
+            Message::ImageHovered(model, is_hovered) => {
+                if let Some(effect) = self.effects.get_mut(&model) {
+                    effect.zoom.go_mut(is_hovered);
+                }
+
+                Task::none()
             }
             Message::Animate(now) => {
                 self.now = now;
@@ -110,7 +135,7 @@ impl Models {
                 card(
                     model,
                     self.images.get(&model.id),
-                    self.animations.get(&model.id),
+                    self.effects.get(&model.id),
                     self.now,
                 )
             }))
@@ -125,20 +150,25 @@ impl Models {
 fn card<'a>(
     model: &'a Model,
     cover: Option<&'a image::Handle>,
-    animation: Option<&'a Animation<bool>>,
+    effect: Option<&'a Effect>,
     now: Instant,
 ) -> Element<'a, Message> {
     use iced::gradient;
     use iced::{Color, Degrees};
 
-    let card = if let Some(animation) = animation {
+    let card = if let Some(effect) = effect {
         let background: Element<_> = if let Some(handle) = cover {
-            image(handle)
-                .width(Fill)
-                .height(Fill)
-                .content_fit(ContentFit::Cover)
-                .opacity(animation.interpolate(0.0, 1.0, now))
-                .into()
+            mouse_area(
+                image(handle)
+                    .width(Fill)
+                    .height(Fill)
+                    .content_fit(ContentFit::Cover)
+                    .opacity(effect.fade_in.interpolate(0.0, 1.0, now))
+                    .scale(effect.zoom.interpolate(1.0, 1.1, now)),
+            )
+            .on_enter(Message::ImageHovered(model.id, true))
+            .on_exit(Message::ImageHovered(model.id, false))
+            .into()
         } else {
             container(horizontal_space()).height(Fill).into()
         };
@@ -179,16 +209,21 @@ fn card<'a>(
         stack![horizontal_space()]
     };
 
-    let card = container(card)
-        .width(320)
-        .height(410)
-        .style(container::dark);
+    let card = button(
+        container(card)
+            .width(320)
+            .height(410)
+            .style(container::dark),
+    )
+    .on_press(Message::ShowModel(model.id))
+    .padding(0)
+    .style(button::text);
 
     if cover.is_some() {
         card.into()
     } else {
         pop(card)
-            .on_show(Message::ModelPopped(model.id))
+            .on_show(|_| Message::ModelPopped(model.id))
             .anticipate(200)
             .into()
     }

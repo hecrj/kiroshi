@@ -25,11 +25,11 @@ where
         self
     }
 
-    pub fn _very_quick(self) -> Self {
+    pub fn very_quick(self) -> Self {
         self.duration(Duration::from_millis(100))
     }
 
-    pub fn _quick(self) -> Self {
+    pub fn quick(self) -> Self {
         self.duration(Duration::from_millis(200))
     }
 

@@ -250,7 +250,7 @@ where
     fn update(
         &mut self,
         tree: &mut Tree,
-        event: Event,
+        event: &Event,
         layout: Layout<'_>,
         _cursor: mouse::Cursor,
         _renderer: &Renderer,
@@ -274,7 +274,7 @@ where
                         next_redraw,
                         ticks,
                     } => {
-                        if *next_redraw <= now {
+                        if *next_redraw <= *now {
                             *ticks += 1;
 
                             let mut rng = rand::thread_rng();
@@ -303,7 +303,7 @@ where
                                 }))
                                 .collect::<String>();
 
-                            *next_redraw = now + Duration::from_millis(self.tick_rate);
+                            *next_redraw = *now + Duration::from_millis(self.tick_rate);
 
                             shell.invalidate_layout();
                         }
