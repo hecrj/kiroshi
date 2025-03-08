@@ -20,7 +20,7 @@ WORKDIR /kiroshi
 # Install Python dependencies
 COPY requirements.txt .
 RUN python3.11 -m venv .env
-RUN .env/bin/pip install -r requirements.txt
+RUN .env/bin/pip install --extra-index-url https://download.pytorch.org/whl/nightly/cu128 -r requirements.txt
 
 RUN mkdir weights
 
