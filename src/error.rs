@@ -8,7 +8,6 @@ pub enum Error {
     DockerFailed,
     DataDirectoryNotFound,
     ConfigDirectoryNotFound,
-    InvalidModelSettings(toml::de::Error),
     InvalidOutput(String),
 }
 
