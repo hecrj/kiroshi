@@ -1,3 +1,4 @@
 /target
 *.pth.lock
 __pycache__
+Cargo.lock

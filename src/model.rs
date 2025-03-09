@@ -1,11 +1,9 @@
 use crate::Error;
 
-use std::collections::BTreeMap;
+use tokio::fs;
+
 use std::fmt;
 use std::path::{Path, PathBuf};
-
-use serde::{Deserialize, Serialize};
-use tokio::fs;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Model(PathBuf);
@@ -55,34 +53,6 @@ impl fmt::Display for Model {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.name())
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Settings(BTreeMap<String, Metadata>);
-
-impl Settings {
-    pub async fn fetch() -> Result<Self, Error> {
-        let config_file = dirs::config_dir()
-            .ok_or(Error::ConfigDirectoryNotFound)?
-            .join("kiroshi")
-            .join("models.toml");
-
-        let config = fs::read_to_string(config_file).await?;
-
-        toml::from_str(&config)
-            .map(Self)
-            .map_err(Error::InvalidModelSettings)
-    }
-
-    pub fn get(&self, model: &Model) -> Metadata {
-        self.0.get(&model.name()).cloned().unwrap_or_default()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub struct Metadata {
-    pub prompt_template: String,
-    pub negative_prompt_template: String,
 }
 
 pub(crate) fn directory() -> Result<PathBuf, Error> {

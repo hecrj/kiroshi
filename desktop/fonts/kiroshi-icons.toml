@@ -1,9 +1,0 @@
-module = "icon"
-
-[glyphs]
-brush = "fontawesome-brush"
-checkmark = "fontawesome-ok"
-cubes = "fontawesome-cubes"
-hidden = "fontawesome-eye-off"
-refresh = "entypo-arrows-ccw"
-visible = "fontawesome-eye"
