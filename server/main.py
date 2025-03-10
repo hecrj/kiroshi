@@ -7,6 +7,7 @@ import torch
 import gc
 import multiprocessing
 import signal
+import os
 from PIL import ImageFilter
 
 
@@ -27,7 +28,19 @@ async def instance(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
 
     print(f"[kiroshi] Received: {message}")
 
-    model = message['model']
+    match message['task']:
+        case 'ping':
+            await send_json(writer, True)
+
+        case 'generate_image':
+            await generate_image(writer, message)
+
+        case 'list_models':
+            await list_models(writer)
+
+
+async def generate_image(writer, message):
+    model = f"/models/{message['model']}.safetensors"
     prompt = message['prompt']
     negative_prompt = message['negative_prompt']
     size = message['size']
@@ -152,6 +165,12 @@ async def instance(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     torch.cuda.empty_cache()
 
 
+async def list_models(writer: asyncio.StreamWriter):
+    models = [os.path.splitext(file)[0] for file in os.listdir('/models') if os.path.isfile(f"/models/{file}") and file.endswith('.safetensors')]
+
+    await send_json(writer, { 'models': models })
+
+
 async def send_json(writer: asyncio.StreamWriter, data={}):
     data = json.dumps(data).encode('utf-8')
     size = len(data)
@@ -170,7 +189,6 @@ async def send(writer: asyncio.StreamWriter, data):
 
 
 if __name__ == '__main__':
-
     def terminate(signum, frame):
         print("[kiroshi] Exiting...")
         raise KeyboardInterrupt

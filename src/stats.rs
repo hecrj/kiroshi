@@ -12,7 +12,7 @@ pub struct Stats {
 
 impl Stats {
     pub async fn fetch() -> Result<Self, Error> {
-        // TODO: Run on sever
+        // TODO: Run on server
         let (vram_usage, gpu_temperature) = check_gpu().await?;
 
         Ok(Self {

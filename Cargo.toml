@@ -12,12 +12,13 @@ futures.workspace = true
 num-traits.workspace = true
 rand.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 
 serde.workspace = true
 serde.features = ["derive"]
 
 tokio.workspace = true
-tokio.features = ["process", "net", "fs", "io-util"]
+tokio.features = ["process", "net", "fs", "time", "io-util"]
 
 [workspace.dependencies]
 bytes = "1"
@@ -27,4 +28,5 @@ num-traits = "0.2"
 rand = "0.8"
 serde = "1"
 serde_json = "1"
+thiserror = "1"
 tokio = "1"

@@ -2,8 +2,6 @@ use crate::server;
 use crate::stream::{SinkExt, Stream};
 use crate::{Detail, Error, Lora, Model, Quality, Rectangle, Sampler, Seed, Size, Steps};
 
-use std::path::PathBuf;
-
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +21,8 @@ impl Image {
     ) -> impl Stream<Item = Result<Generation, Error>> {
         #[derive(Serialize)]
         struct Request {
-            model: PathBuf,
+            task: &'static str,
+            model: String,
             prompt: String,
             negative_prompt: String,
             size: Size,
@@ -54,7 +53,8 @@ impl Image {
             let mut buffer = Vec::new();
 
             let request = Request {
-                model: definition.model.path().to_path_buf(),
+                task: "generate_image",
+                model: definition.model.name().to_owned(),
                 prompt: definition.prompt.clone(),
                 negative_prompt: definition.negative_prompt.clone(),
                 size: definition.size,

@@ -1,13 +1,15 @@
 use std::io;
 use std::sync::Arc;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum Error {
+    #[error("io operation failed: {0}")]
     IOFailed(Arc<io::Error>),
+    #[error("serialization failed: {0}")]
     SerializationFailed(Arc<serde_json::Error>),
+    #[error("docker operation failed")]
     DockerFailed,
-    DataDirectoryNotFound,
-    ConfigDirectoryNotFound,
+    #[error("invalid output: {0}")]
     InvalidOutput(String),
 }
 

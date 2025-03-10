@@ -1,13 +1,14 @@
-use crate::model;
 use crate::Error;
 
 use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::fs;
 use tokio::io;
 use tokio::net;
 use tokio::process;
+use tokio::time;
 
+use std::path::Path;
 use std::sync::Arc;
 
 const ADDRESS: &'static str = "127.0.0.1:9149";
@@ -21,8 +22,8 @@ pub struct Server {
 struct Container(String);
 
 impl Server {
-    pub async fn run() -> Result<Server, Error> {
-        let models_dir = model::directory()?;
+    pub async fn run(models_dir: impl AsRef<Path>) -> Result<Server, Error> {
+        let models_dir = models_dir.as_ref();
         fs::create_dir_all(&models_dir).await?;
 
         let mut process = process::Command::new("docker")
@@ -31,13 +32,7 @@ impl Server {
             .args(["--gpus", "all"])
             .args(["-p", "9149:9149"])
             .args(["-v", {
-                let model_dir = models_dir.to_string_lossy().into_owned();
-
-                &format!(
-                    "{host}:{container}",
-                    host = model_dir,
-                    container = model_dir,
-                )
+                &format!("{host}:/models", host = models_dir.to_string_lossy())
             }])
             .arg("ghcr.io/hecrj/kiroshi/server:latest")
             .stdout(std::process::Stdio::piped())
@@ -64,6 +59,11 @@ impl Server {
             .args(["logs", "-f", &container])
             .spawn()?;
 
+        // Wait until server is accepting connections
+        while ping().await.is_err() {
+            time::sleep(time::Duration::from_millis(500)).await;
+        }
+
         Ok(Server {
             _container: Arc::new(Container(container)),
         })
@@ -85,6 +85,25 @@ impl Drop for Container {
 
 pub async fn connect() -> Result<net::TcpStream, Error> {
     Ok(net::TcpStream::connect(ADDRESS).await?)
+}
+
+async fn ping() -> Result<(), Error> {
+    let mut stream = connect().await?;
+
+    #[derive(Serialize)]
+    struct Request {
+        task: &'static str,
+    }
+
+    #[derive(Deserialize)]
+    struct Response(bool);
+
+    send_json(&mut stream, Request { task: "ping" }).await?;
+
+    let mut buffer = Vec::new();
+    let Response(_pong) = read_json(&mut stream, &mut buffer).await?;
+
+    Ok(())
 }
 
 pub async fn read_bytes(stream: &mut net::TcpStream, buffer: &mut Vec<u8>) -> Result<usize, Error> {
