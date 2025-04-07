@@ -5,9 +5,11 @@ use crate::{Detail, Error, Lora, Model, Quality, Rectangle, Sampler, Seed, Size,
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone)]
+use std::fmt;
+
+#[derive(Clone)]
 pub struct Image {
-    pub bytes: Bytes,
+    pub rgba: Bytes,
     pub size: Size,
     pub definition: Definition,
 }
@@ -81,11 +83,11 @@ impl Image {
                 let n_bytes = server::read_bytes(&mut stream, &mut buffer).await?;
 
                 let image = {
-                    let bytes = Bytes::from(buffer[..n_bytes].to_vec());
+                    let rgba = Bytes::from(buffer[..n_bytes].to_vec());
                     let size = Size::new(response.width, response.height);
 
                     Image {
-                        bytes,
+                        rgba,
                         size,
                         definition: definition.clone(),
                     }
@@ -121,6 +123,16 @@ impl Image {
 
             Ok(())
         })
+    }
+}
+
+impl fmt::Debug for Image {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Image")
+            .field("rgba", &format!("{} pixels", self.rgba.len() / 4))
+            .field("size", &self.size)
+            .field("definition", &self.definition)
+            .finish()
     }
 }
 
