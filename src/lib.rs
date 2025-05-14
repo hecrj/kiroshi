@@ -1,4 +1,5 @@
 mod error;
+mod padding;
 mod quality;
 mod rectangle;
 mod sampler;
@@ -12,6 +13,7 @@ pub mod image;
 pub mod lora;
 pub mod model;
 pub mod stats;
+pub mod upscaler;
 
 pub use detail::Detail;
 pub use error::Error;
@@ -19,6 +21,7 @@ pub use image::Image;
 pub use lora::Lora;
 pub mod server;
 pub use model::Model;
+pub use padding::Padding;
 pub use quality::Quality;
 pub use rectangle::Rectangle;
 pub use sampler::Sampler;
@@ -27,3 +30,4 @@ pub use server::Server;
 pub use size::Size;
 pub use stats::Stats;
 pub use steps::Steps;
+pub use upscaler::Upscaler;

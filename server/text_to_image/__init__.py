@@ -11,11 +11,37 @@ import gc
 import time
 from pathlib import Path
 
-Quality = Enum('Quality', ['LOW', 'NORMAL', 'HIGH', 'ULTRA', 'INSANE'])
-Upscaling = Enum('Upscaling', ['DISABLED', 'STANDARD', 'DOWNSAMPLED'])
-Sampler = Enum(
-    'Sampler',
-    ['EULER_A', 'DPM_SDE_KARRAS', 'DPM_2M_KARRAS', 'DPM_2M_SDE_KARRAS'])
+class Quality(Enum):
+    LOW = 0
+    NORMAL = 1
+    HIGH = 2
+    ULTRA = 3
+    INSANE = 4
+
+class Upscaling(Enum):
+    REAL_ESRGAN_2X = 0
+    ULTRASHARP_4X = 2
+
+    def scale(self):
+        match self:
+            case Upscaling.REAL_ESRGAN_2X:
+                return 2
+            case Upscaling.ULTRASHARP_4X:
+                return 4
+
+    def weight(self):
+        match self:
+            case Upscaling.REAL_ESRGAN_2X:
+                return "RealESRGAN_x2plus"
+            case Upscaling.ULTRASHARP_4X:
+                return "4x-UltraSharp"
+
+
+class Sampler(Enum):
+    EULER_A = 0
+    DPM_SDE_KARRAS = 1
+    DPM_2M_KARRAS = 2
+    DPM_2M_SDE_KARRAS = 3
 
 last_parameters = None
 last_image = None
@@ -26,7 +52,7 @@ last_sampler = None
 last_cpu_offload = None
 pipe = None
 inpainting_pipe = None
-upscaler = None
+upscaler_pipe = None
 last_upscaling = None
 semaphore = threading.Semaphore()
 
@@ -59,6 +85,13 @@ class Parameters:
 
 
 @dataclass
+class Upscaler:
+    model: Upscaling = Upscaling.ULTRASHARP_4X
+    tile_size: int = 192
+    tile_padding: int = 24
+
+
+@dataclass
 class Cache:
     value: any
     generator: torch.Tensor
@@ -73,13 +106,13 @@ class Generation:
 
 
 def generate(parameters: Parameters,
-             upscaling: Upscaling = Upscaling.STANDARD,
+             upscaler: Upscaler | None = None,
              face_detail: Detail | None = None,
              hand_detail: Detail | None = None,
              on_progress: Callable[float, Image] | None = None,
              cpu_offload: bool = False) -> Generation:
     global last_parameters, last_image, last_face, last_generator, last_model, last_loras, last_sampler, last_cpu_offload
-    global pipe, inpainting_pipe, last_upscaling, upscaler, compel_proc, semaphore
+    global pipe, inpainting_pipe, last_upscaling, upscaler_pipe, compel_proc, semaphore
     semaphore.acquire()
 
     from diffusers import AutoPipelineForInpainting, StableDiffusionXLPipeline
@@ -195,15 +228,16 @@ def generate(parameters: Parameters,
         inpainting_pipe = AutoPipelineForInpainting.from_pipe(pipe)
         last_sampler = parameters.sampler
 
-    if last_upscaling != upscaling:
-        scale = 2 if upscaling == Upscaling.STANDARD else 4
-        print(f"Loading x{scale} upscaler...")
+    if not upscaler is None and last_upscaling != upscaler.model:
+        weight = upscaler.model.weight()
+        scale = upscaler.model.scale()
+
+        print(f"Loading {weight} upscaler ({scale}x)...")
 
         device = torch.device('cuda')
-        upscaler = RealESRGAN(device, scale=scale)
-        upscaler.load_weights(f'weights/RealESRGAN_x{scale}.pth',
-                              download=False)
-        last_upscaling = upscaling
+        upscaler_pipe = RealESRGAN(device, scale=scale)
+        upscaler_pipe.load_weights(f'weights/{weight}.pth')
+        last_upscaling = upscaler.model
 
     def on_step_end(pipe, step, timestep, callback_kwargs):
         nonlocal on_progress
@@ -322,13 +356,16 @@ def generate(parameters: Parameters,
             (image, hands) = increase_hand_detail(hand_detail, configuration,
                                                   image, inpainting_pipe)
 
-        if upscaling != Upscaling.DISABLED:
+        if upscaler is None:
+            image = image.copy()
+        else:
+            print(f"Upscaling: {upscaler}")
             on_progress(1.0, image.copy())
 
             start = time.time()
-            image = upscaler.predict(image)
+            image = upscaler_pipe.predict(image, patches_size=upscaler.tile_size, padding=upscaler.tile_padding)
 
-            scale = 2 if upscaling == Upscaling.STANDARD else 4
+            scale = upscaler.model.scale()
             faces = [[point * scale for point in face] for face in faces]
             hands = [[point * scale for point in hand] for hand in hands]
             print(f"Upscaled: {time.time() - start}s")

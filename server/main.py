@@ -49,13 +49,23 @@ async def generate_image(writer, message):
     seed = message.get('seed')
     loras = message.get('loras') or []
     sampler = message.get('sampler') or 'euler_a'
+    upscaler = message.get('upscaler')
     preview_after = message.get('preview_after')
     face_detail = message.get('face_detail')
     hand_detail = message.get('hand_detail')
     cpu_offload = message.get('cpu_offload') or False
 
+    if not upscaler is None:
+        upscaling = {
+            '2x-real_esrgan': text_to_image.Upscaling.REAL_ESRGAN_2X,
+            '4x-ultrasharp': text_to_image.Upscaling.ULTRASHARP_4X,
+        }.get(upscaler['model'], text_to_image.Upscaling.ULTRASHARP_4X)
+
+        upscaler = text_to_image.Upscaler(model=upscaling, tile_size=upscaler['tile_size'], tile_padding=upscaler['tile_padding'])
+
     if preview_after is None:
         preview_after = 1.0
+
 
     if not face_detail is None:
         face_detail = text_to_image.Detail.from_dict(face_detail)
@@ -132,6 +142,7 @@ async def generate_image(writer, message):
                                               sampler=sampler)
 
         return text_to_image.generate(parameters=parameters,
+                                      upscaler=upscaler,
                                       face_detail=face_detail,
                                       hand_detail=hand_detail,
                                       on_progress=on_progress,

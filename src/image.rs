@@ -1,6 +1,6 @@
 use crate::server;
 use crate::stream::{SinkExt, Stream};
-use crate::{Detail, Error, Lora, Model, Quality, Rectangle, Sampler, Seed, Size, Steps};
+use crate::{Detail, Error, Lora, Model, Quality, Rectangle, Sampler, Seed, Size, Steps, Upscaler};
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -30,6 +30,7 @@ impl Image {
             size: Size,
             quality: String,
             sampler: String,
+            upscaler: Option<Upscaler>,
             steps: Steps,
             seed: u64,
             face_detail: Option<Detail>,
@@ -68,6 +69,7 @@ impl Image {
                     Sampler::DPM2MSDEKarras => "dpm++_2m_sde_karras",
                 }
                 .to_owned(),
+                upscaler: definition.upscaler,
                 steps: definition.steps,
                 seed: definition.seed.value(),
                 face_detail: definition.face_detail,
@@ -159,6 +161,7 @@ pub struct Definition {
     pub steps: Steps,
     pub quality: Quality,
     pub sampler: Sampler,
+    pub upscaler: Option<Upscaler>,
     pub face_detail: Option<Detail>,
     pub hand_detail: Option<Detail>,
     pub loras: Vec<Lora>,
