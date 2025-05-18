@@ -81,7 +81,7 @@ async fn check_gpu() -> Result<(Memory, Temperature), Error> {
     let total = output
         .lines()
         .find(|line| line.trim().starts_with("Total"))
-        .and_then(|line| line.trim().split_whitespace().rev().nth(1))
+        .and_then(|line| line.split_whitespace().rev().nth(1))
         .ok_or(unexpected_output())?
         .parse()
         .map(MBytes::from_mebibytes)
@@ -91,7 +91,7 @@ async fn check_gpu() -> Result<(Memory, Temperature), Error> {
     let free = output
         .lines()
         .find(|line| line.trim().starts_with("Free"))
-        .and_then(|line| line.trim().split_whitespace().rev().nth(1))
+        .and_then(|line| line.split_whitespace().rev().nth(1))
         .ok_or(unexpected_output())?
         .parse()
         .map(MBytes::from_mebibytes)
@@ -103,7 +103,7 @@ async fn check_gpu() -> Result<(Memory, Temperature), Error> {
     let temperature = output
         .lines()
         .find(|line| line.trim().starts_with("GPU Current Temp"))
-        .and_then(|line| line.trim().split_whitespace().rev().nth(1))
+        .and_then(|line| line.split_whitespace().rev().nth(1))
         .ok_or(unexpected_output())?
         .parse()
         .map(|celsius| Temperature { celsius })

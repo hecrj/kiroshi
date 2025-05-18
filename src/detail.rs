@@ -24,11 +24,7 @@ pub struct Area(u32);
 
 impl Area {
     pub fn parse(value: u32) -> Option<Area> {
-        if value > 0 {
-            Some(Self(value))
-        } else {
-            None
-        }
+        if value > 0 { Some(Self(value)) } else { None }
     }
 
     pub fn value(self) -> u32 {

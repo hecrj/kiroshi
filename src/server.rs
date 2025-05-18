@@ -11,7 +11,7 @@ use tokio::time;
 use std::path::Path;
 use std::sync::Arc;
 
-const ADDRESS: &'static str = "127.0.0.1:9149";
+const ADDRESS: &str = "127.0.0.1:9149";
 
 #[derive(Debug, Clone)]
 pub struct Server {
@@ -23,17 +23,19 @@ struct Container(String);
 
 impl Server {
     pub async fn run(models_dir: impl AsRef<Path>) -> Result<Server, Error> {
-        let models_dir = models_dir.as_ref();
-        fs::create_dir_all(&models_dir).await?;
+        let models = {
+            let models_dir = models_dir.as_ref();
+            fs::create_dir_all(&models_dir).await?;
+
+            format!("{host}:/models", host = models_dir.to_string_lossy())
+        };
 
         let mut process = process::Command::new("docker")
             .arg("create")
             .args(["-t", "--rm"])
             .args(["--gpus", "all"])
             .args(["-p", "9149:9149"])
-            .args(["-v", {
-                &format!("{host}:/models", host = models_dir.to_string_lossy())
-            }])
+            .args(["-v", &models])
             .arg("ghcr.io/hecrj/kiroshi/server:latest")
             .stdout(std::process::Stdio::piped())
             .stdin(std::process::Stdio::null())

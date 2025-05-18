@@ -1,5 +1,5 @@
-use crate::server;
 use crate::Error;
+use crate::server;
 
 use serde::{Deserialize, Serialize};
 
@@ -43,6 +43,6 @@ impl Model {
 
 impl fmt::Display for Model {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.name())
+        f.write_str(self.name())
     }
 }

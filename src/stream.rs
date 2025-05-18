@@ -1,9 +1,9 @@
-pub use futures::stream::{Stream, StreamExt};
 pub use futures::SinkExt;
+pub use futures::stream::{Stream, StreamExt};
 
+use futures::Future;
 use futures::channel::mpsc;
 use futures::stream;
-use futures::Future;
 
 pub fn from_future<T, E, F>(
     f: impl FnOnce(mpsc::Sender<T>) -> F,
