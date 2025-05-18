@@ -1,6 +1,8 @@
 use crate::server;
 use crate::stream::{SinkExt, Stream};
-use crate::{Detail, Error, Lora, Model, Quality, Rectangle, Sampler, Seed, Size, Steps, Upscaler};
+use crate::{
+    Detail, Error, Inpaint, Lora, Model, Quality, Rectangle, Sampler, Seed, Size, Steps, Upscaler,
+};
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -35,6 +37,7 @@ impl Image {
             seed: u64,
             face_detail: Option<Detail>,
             hand_detail: Option<Detail>,
+            inpaints: Vec<Inpaint>,
             loras: Vec<Lora>,
             preview_after: Option<f32>,
         }
@@ -74,6 +77,7 @@ impl Image {
                 seed: definition.seed.value(),
                 face_detail: definition.face_detail,
                 hand_detail: definition.hand_detail,
+                inpaints: definition.inpaints.clone(),
                 loras: definition.loras.clone(),
                 preview_after,
             };
@@ -164,5 +168,6 @@ pub struct Definition {
     pub upscaler: Option<Upscaler>,
     pub face_detail: Option<Detail>,
     pub hand_detail: Option<Detail>,
+    pub inpaints: Vec<Inpaint>,
     pub loras: Vec<Lora>,
 }

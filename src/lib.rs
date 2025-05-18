@@ -1,4 +1,5 @@
 mod error;
+mod inpaint;
 mod padding;
 mod quality;
 mod rectangle;
@@ -7,6 +8,7 @@ mod seed;
 mod size;
 mod steps;
 mod stream;
+mod strength;
 
 pub mod detail;
 pub mod image;
@@ -19,7 +21,9 @@ pub use detail::Detail;
 pub use error::Error;
 pub use image::Image;
 pub use lora::Lora;
+pub use strength::Strength;
 pub mod server;
+pub use inpaint::Inpaint;
 pub use model::Model;
 pub use padding::Padding;
 pub use quality::Quality;

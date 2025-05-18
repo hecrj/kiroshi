@@ -46,6 +46,8 @@ class Sampler(Enum):
 last_parameters = None
 last_image = None
 last_face = None
+last_hand = None
+last_inpaints = None
 last_model = None
 last_loras = None
 last_sampler = None
@@ -105,13 +107,43 @@ class Generation:
     hands: list[list[float]]
 
 
+@dataclass
+class Rectangle:
+    x: float
+    y: float
+    width: float
+    height: float
+
+    def from_dict(rectangle: dict):
+        return Rectangle(x=rectangle['x'],
+                         y=rectangle['y'],
+                         width=rectangle['width'],
+                         height=rectangle['height'])
+
+
+@dataclass
+class Inpaint:
+    region: Rectangle
+    strength: int
+    padding: int
+    prompt: str | None = None
+    negative_prompt: str | None = None
+
+    def from_dict(inpaint: dict):
+        return Inpaint(region=Rectangle.from_dict(inpaint['region']),
+                       prompt=inpaint['prompt'],
+                       negative_prompt=inpaint['negative_prompt'],
+                       strength=inpaint['strength'],
+                       padding=inpaint['padding'])
+
 def generate(parameters: Parameters,
              upscaler: Upscaler | None = None,
              face_detail: Detail | None = None,
              hand_detail: Detail | None = None,
+             inpaints: list[Inpaint] | None = None,
              on_progress: Callable[float, Image] | None = None,
              cpu_offload: bool = False) -> Generation:
-    global last_parameters, last_image, last_face, last_generator, last_model, last_loras, last_sampler, last_cpu_offload
+    global last_parameters, last_image, last_face, last_hand, last_inpaints, last_generator, last_model, last_loras, last_sampler, last_cpu_offload
     global pipe, inpainting_pipe, last_upscaling, upscaler_pipe, compel_proc, semaphore
     semaphore.acquire()
 
@@ -309,15 +341,17 @@ def generate(parameters: Parameters,
                 callback_on_step_end_tensor_inputs=["latents"],
             ).images[0]
 
+            last_face = None
+            last_hand = None
+            last_inpaints = None
+
             if parameters.seed is None:
                 last_parameters = None
                 last_image = None
-                last_face = None
             else:
                 last_parameters = parameters
                 last_image = Cache(
                     value=image, generator=configuration.generator.get_state())
-                last_face = None
         else:
             image = last_image.value
             configuration.generator.set_state(last_image.generator)
@@ -331,10 +365,13 @@ def generate(parameters: Parameters,
             if not face_detail.max_area is None:
                 face_detail.max_area *= quality_factor
 
-            if is_new or last_face is None or face_detail != last_face.key:
+            if last_face is None or face_detail != last_face.key:
                 (image, faces) = increase_face_detail(face_detail,
                                                       configuration, image,
                                                       inpainting_pipe)
+
+                last_hand = None
+                last_inpaints = None
 
                 if parameters.seed is None:
                     last_face = None
@@ -353,8 +390,79 @@ def generate(parameters: Parameters,
             if not hand_detail.max_area is None:
                 hand_detail.max_area *= quality_factor
 
-            (image, hands) = increase_hand_detail(hand_detail, configuration,
-                                                  image, inpainting_pipe)
+            if last_hand is None or hand_detail != last_hand.key:
+                (image, hands) = increase_hand_detail(hand_detail, configuration,
+                                                      image, inpainting_pipe)
+
+                last_inpaints = None
+
+                if parameters.seed is None:
+                    last_hand = None
+                else:
+                    last_hand = Cache(
+                        key=hand_detail,
+                        value=(image, hands),
+                        generator=configuration.generator.get_state())
+            else:
+                (image, hands) = last_hand.value
+                configuration.generator.set_state(last_hand.generator)
+
+
+        for i, inpaint in enumerate(inpaints):
+            if not last_inpaints is None and i < len(last_inpaints.key) and last_inpaints.key[i] == inpaint:
+                image = last_inpaints.value[i]
+                configuration.generator.set_state(last_inpaints.generator[i])
+                continue
+
+            prompt_embeds = configuration.prompt_embeds
+            prompt_pooled = configuration.prompt_pooled
+            negative_prompt_embeds = configuration.negative_prompt_embeds
+            negative_prompt_pooled = configuration.negative_prompt_pooled
+
+            if not inpaint.prompt is None or not inpaint.negative_prompt is None:
+                prompt_embeds, prompt_pooled = compel_proc(inpaint.prompt or parameters.prompt)
+                negative_prompt_embeds, negative_prompt_pooled = compel_proc(inpaint.negative_prompt or parameters.negative_prompt)
+
+                [prompt_embeds, negative_prompt_embeds
+                 ] = compel_proc.pad_conditioning_tensors_to_same_length(
+                     [prompt_embeds, negative_prompt_embeds])
+
+            from adetailer.common import create_mask_from_bbox
+            from adetailer.mask import mask_preprocess, bbox_area
+
+            mask = create_mask_from_bbox([[
+                inpaint.region.x * image.width,
+                inpaint.region.y * image.height,
+                (inpaint.region.x + inpaint.region.width) * image.width,
+                (inpaint.region.y + inpaint.region.height) * image.height]],
+                image.size,
+            )[0]
+
+            mask = mask_preprocess([mask], 4)[0]
+            mask = inpainting_pipe.mask_processor.blur(mask, blur_factor=inpaint.padding / 4)
+
+            image = inpainting_pipe(
+                image=image,
+                mask_image=mask,
+                strength=inpaint.strength / 100.0,
+                padding_mask_crop=inpaint.padding,
+                num_inference_steps=configuration.steps,
+                guidance_scale=configuration.guidance,
+                prompt_embeds=prompt_embeds,
+                pooled_prompt_embeds=prompt_pooled,
+                negative_prompt_embeds=negative_prompt_embeds,
+                negative_pooled_prompt_embeds=negative_prompt_pooled,
+                width=configuration.width,
+                height=configuration.height,
+                generator=configuration.generator,
+                callback_on_step_end=configuration.on_step_end,
+                callback_on_step_end_tensor_inputs=["latents"],
+            ).images[0]
+
+            last_inpaints = Cache(
+                key=(last_inpaints and last_inpaints.key[:i] or []) + [inpaint],
+                value=(last_inpaints and last_inpaints.value[:i] or []) + [image],
+                generator=(last_inpaints and last_inpaints.generator[:i] or []) + [configuration.generator.get_state()])
 
         if upscaler is None:
             image = image.copy()

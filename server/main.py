@@ -47,6 +47,7 @@ async def generate_image(writer, message):
     quality = message['quality']
     steps = message.get('steps')
     seed = message.get('seed')
+    inpaints = message.get('inpaints') or []
     loras = message.get('loras') or []
     sampler = message.get('sampler') or 'euler_a'
     upscaler = message.get('upscaler')
@@ -72,6 +73,9 @@ async def generate_image(writer, message):
 
     if not hand_detail is None:
         hand_detail = text_to_image.Detail.from_dict(hand_detail)
+
+    if inpaints:
+        inpaints = [text_to_image.Inpaint.from_dict(inpaint) for inpaint in inpaints]
 
     if loras:
         loras = [text_to_image.Lora.from_dict(lora) for lora in loras]
@@ -145,6 +149,7 @@ async def generate_image(writer, message):
                                       upscaler=upscaler,
                                       face_detail=face_detail,
                                       hand_detail=hand_detail,
+                                      inpaints=inpaints,
                                       on_progress=on_progress,
                                       cpu_offload=cpu_offload)
 
