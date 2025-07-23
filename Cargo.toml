@@ -1,6 +1,6 @@
 [package]
 name = "kiroshi"
-version = "0.1.0"
+version = "0.1.0-dev"
 edition = "2024"
 license = "MIT"
 description = "WIP"
@@ -20,7 +20,13 @@ serde.features = ["derive"]
 tokio.workspace = true
 tokio.features = ["process", "net", "fs", "time", "io-util"]
 
+[workspace]
+members = ["server"]
+
 [workspace.dependencies]
+kiroshi.version = "0.1.0-dev"
+kiroshi.path = "."
+
 bytes = "1"
 dirs = "6"
 futures = "0.3"

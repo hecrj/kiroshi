@@ -126,6 +126,7 @@ class Inpaint:
     region: Rectangle
     strength: int
     padding: int
+    blur_factor: int = 4
     prompt: str | None = None
     negative_prompt: str | None = None
 
@@ -134,7 +135,8 @@ class Inpaint:
                        prompt=inpaint['prompt'],
                        negative_prompt=inpaint['negative_prompt'],
                        strength=inpaint['strength'],
-                       padding=inpaint['padding'])
+                       padding=inpaint['padding'],
+                       blur_factor=inpaint['blur_factor'])
 
 def generate(parameters: Parameters,
              upscaler: Upscaler | None = None,
@@ -439,7 +441,7 @@ def generate(parameters: Parameters,
             )[0]
 
             mask = mask_preprocess([mask], 4)[0]
-            mask = inpainting_pipe.mask_processor.blur(mask, blur_factor=inpaint.padding / 4)
+            mask = inpainting_pipe.mask_processor.blur(mask, blur_factor=inpaint.blur_factor)
 
             image = inpainting_pipe(
                 image=image,

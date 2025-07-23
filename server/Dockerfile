@@ -1,4 +1,16 @@
-FROM nvidia/cuda:12.5.1-runtime-ubuntu22.04
+FROM rust:1.88 AS build
+
+WORKDIR /kiroshi
+
+COPY Cargo.toml /kiroshi/.
+COPY src/ /kiroshi/src
+
+COPY server/src/ /kiroshi/server/src
+COPY server/Cargo.toml /kiroshi/server/.
+
+RUN cargo build --release --package kiroshi-server
+
+FROM nvidia/cuda:12.9.1-runtime-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -18,7 +30,7 @@ RUN python3.11 --version
 WORKDIR /kiroshi
 
 # Install Python dependencies
-COPY requirements.txt .
+COPY server/requirements.txt .
 RUN python3.11 -m venv .env
 RUN .env/bin/pip install --extra-index-url https://download.pytorch.org/whl/nightly/cu128 -r requirements.txt
 
@@ -37,6 +49,7 @@ RUN curl -L -o weights/face_yolov8n.pt https://huggingface.co/Bingsu/adetailer/r
 RUN curl -L -o weights/hand_yolov9c.pt https://huggingface.co/Bingsu/adetailer/resolve/53cc19de382014514d9d4038601d261a7faa9b7b/hand_yolov9c.pt?download=true
 
 # Copy server code
-COPY . /kiroshi
+COPY server/. /kiroshi
+COPY --from=build /kiroshi/target/release/kiroshi-server kiroshi
 
-ENTRYPOINT [".env/bin/python", "main.py"]
+ENTRYPOINT ["./kiroshi"]

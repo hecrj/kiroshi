@@ -12,8 +12,8 @@ from PIL import ImageFilter
 
 
 async def server():
-    server = await asyncio.start_server(instance, '0.0.0.0', 9149)
-    print("[kiroshi] Server started at 0.0.0.0:9149")
+    server = await asyncio.start_server(instance, '0.0.0.0', 9148)
+    print("[kiroshi] Server started at 0.0.0.0:9148")
 
     async with server:
         await server.serve_forever()
@@ -27,16 +27,7 @@ async def instance(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
     message = json.loads(message)
 
     print(f"[kiroshi] Received: {message}")
-
-    match message['task']:
-        case 'ping':
-            await send_json(writer, True)
-
-        case 'generate_image':
-            await generate_image(writer, message)
-
-        case 'list_models':
-            await list_models(writer)
+    await generate_image(writer, message)
 
 
 async def generate_image(writer, message):
@@ -179,12 +170,6 @@ async def generate_image(writer, message):
 
     gc.collect()
     torch.cuda.empty_cache()
-
-
-async def list_models(writer: asyncio.StreamWriter):
-    models = [os.path.splitext(file)[0] for file in os.listdir('/models') if os.path.isfile(f"/models/{file}") and file.endswith('.safetensors')]
-
-    await send_json(writer, { 'models': models })
 
 
 async def send_json(writer: asyncio.StreamWriter, data={}):

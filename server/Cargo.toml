@@ -1,0 +1,14 @@
+[package]
+name = "kiroshi-server"
+version = "0.1.0-dev"
+edition = "2024"
+
+[dependencies]
+kiroshi.workspace = true
+futures.workspace = true
+
+serde.workspace = true
+serde.features = ["derive"]
+
+tokio.workspace = true
+tokio.features = ["fs", "macros", "rt", "rt-multi-thread", "signal"]

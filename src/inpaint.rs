@@ -9,4 +9,5 @@ pub struct Inpaint {
     pub negative_prompt: Option<String>,
     pub strength: Strength,
     pub padding: Padding,
+    pub blur_factor: Padding,
 }

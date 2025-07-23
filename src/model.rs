@@ -1,37 +1,24 @@
 use crate::Error;
-use crate::server;
+use crate::protocol;
 
 use serde::{Deserialize, Serialize};
 
 use std::fmt;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Model(String);
 
 impl Model {
     pub async fn list() -> Result<Vec<Self>, Error> {
-        let mut stream = server::connect().await?;
-
-        #[derive(Serialize)]
-        struct Request {
-            task: &'static str,
-        }
+        let mut stream = protocol::perform(protocol::Request::ListModels).await?;
 
         #[derive(Deserialize)]
         struct Response {
             models: Vec<String>,
         }
 
-        server::send_json(
-            &mut stream,
-            Request {
-                task: "list_models",
-            },
-        )
-        .await?;
-
         let mut buffer = Vec::new();
-        let Response { models } = server::read_json(&mut stream, &mut buffer).await?;
+        let Response { models } = protocol::read_json(&mut stream, &mut buffer).await?;
 
         Ok(models.into_iter().map(Self).collect())
     }

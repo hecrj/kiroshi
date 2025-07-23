@@ -14,6 +14,7 @@ pub mod detail;
 pub mod image;
 pub mod lora;
 pub mod model;
+pub mod protocol;
 pub mod stats;
 pub mod upscaler;
 

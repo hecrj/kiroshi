@@ -1,17 +1,13 @@
 use crate::Error;
+use crate::protocol;
 
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 use tokio::fs;
 use tokio::io;
-use tokio::net;
 use tokio::process;
 use tokio::time;
 
 use std::path::Path;
 use std::sync::Arc;
-
-const ADDRESS: &str = "127.0.0.1:9149";
 
 #[derive(Debug, Clone)]
 pub struct Server {
@@ -62,7 +58,7 @@ impl Server {
             .spawn()?;
 
         // Wait until server is accepting connections
-        while ping().await.is_err() {
+        while protocol::ping().await.is_err() {
             time::sleep(time::Duration::from_millis(500)).await;
         }
 
@@ -83,61 +79,4 @@ impl Drop for Container {
             .stderr(process::Stdio::null())
             .spawn();
     }
-}
-
-pub async fn connect() -> Result<net::TcpStream, Error> {
-    Ok(net::TcpStream::connect(ADDRESS).await?)
-}
-
-async fn ping() -> Result<(), Error> {
-    let mut stream = connect().await?;
-
-    #[derive(Serialize)]
-    struct Request {
-        task: &'static str,
-    }
-
-    #[derive(Deserialize)]
-    struct Response(bool);
-
-    send_json(&mut stream, Request { task: "ping" }).await?;
-
-    let mut buffer = Vec::new();
-    let Response(_pong) = read_json(&mut stream, &mut buffer).await?;
-
-    Ok(())
-}
-
-pub async fn read_bytes(stream: &mut net::TcpStream, buffer: &mut Vec<u8>) -> Result<usize, Error> {
-    use tokio::io::AsyncReadExt;
-
-    let message_size = stream.read_u64().await? as usize;
-
-    if buffer.len() < message_size {
-        buffer.resize(message_size, 0);
-    }
-
-    Ok(stream.read_exact(&mut buffer[..message_size]).await?)
-}
-
-pub async fn read_json<T: DeserializeOwned>(
-    stream: &mut net::TcpStream,
-    buffer: &mut Vec<u8>,
-) -> Result<T, Error> {
-    let message_size = read_bytes(stream, buffer).await?;
-    let data = serde_json::from_reader(&buffer[..message_size])?;
-
-    Ok(data)
-}
-
-pub async fn send_json<T: Serialize>(stream: &mut net::TcpStream, data: T) -> Result<(), Error> {
-    use tokio::io::AsyncWriteExt;
-
-    let bytes = serde_json::to_vec(&data)?;
-
-    stream.write_u64(bytes.len() as u64).await?;
-    stream.write_all(bytes.as_slice()).await?;
-    stream.flush().await?;
-
-    Ok(())
 }

@@ -1,11 +1,11 @@
 use crate::Padding;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use std::fmt;
 use std::ops::RangeInclusive;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Upscaler {
     pub model: Model,
     pub tile_size: TileSize,
@@ -22,7 +22,7 @@ impl Default for Upscaler {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Model {
     #[serde(rename = "2x-real_esrgan")]
     RealEsrganX2,
@@ -43,7 +43,7 @@ impl fmt::Display for Model {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct TileSize(u32);
 
 impl TileSize {
