@@ -5,6 +5,9 @@ edition = "2024"
 license = "MIT"
 description = "WIP"
 
+[lints]
+workspace = true
+
 [dependencies]
 bytes.workspace = true
 dirs.workspace = true
@@ -23,6 +26,9 @@ tokio.features = ["process", "net", "fs", "time", "io-util"]
 [workspace]
 members = ["server"]
 
+[workspace.lints.clippy]
+type-complexity = "allow"
+
 [workspace.dependencies]
 kiroshi.version = "0.1.0-dev"
 kiroshi.path = "."
@@ -30,6 +36,7 @@ kiroshi.path = "."
 bytes = "1"
 dirs = "6"
 futures = "0.3"
+log = "0.4"
 num-traits = "0.2"
 rand = "0.8"
 serde = "1"

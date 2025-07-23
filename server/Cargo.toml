@@ -3,9 +3,13 @@ name = "kiroshi-server"
 version = "0.1.0-dev"
 edition = "2024"
 
+[lints]
+workspace = true
+
 [dependencies]
 kiroshi.workspace = true
 futures.workspace = true
+log.workspace = true
 
 serde.workspace = true
 serde.features = ["derive"]

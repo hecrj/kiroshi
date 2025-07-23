@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/dockerize.yml'
+      - 'src/**'
       - 'server/**'
 permissions:
   packages: write

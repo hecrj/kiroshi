@@ -1,4 +1,7 @@
-use kiroshi::{Detail, Error, Inpaint, Lora, Sampler, Size, Steps, Upscaler, protocol};
+use kiroshi::image;
+use kiroshi::model;
+use kiroshi::server;
+use kiroshi::{Detail, Error, Inpaint, Lora, Model, Sampler, Size, Steps, Upscaler, protocol};
 
 use futures::future;
 use serde::Serialize;
@@ -35,105 +38,108 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn run() -> Result<(), Error> {
+    let router = protocol::Router::new()
+        .endpoint(server::PING, ping)
+        .endpoint(image::generate::TASK, generate_image)
+        .endpoint(model::LIST, list_models);
+
     let server = net::TcpListener::bind(&format!("0.0.0.0:{}", protocol::PORT)).await?;
-    let mut buffer = Vec::new();
 
     loop {
-        let (mut client, _) = server.accept().await?;
+        let (client, _) = server.accept().await?;
 
-        let Ok(request) = protocol::read_json(&mut client, &mut buffer).await else {
-            continue;
-        };
-
-        match dbg!(request) {
-            protocol::Request::Ping => {
-                #[derive(Serialize)]
-                struct Pong(bool);
-
-                protocol::send_json(&mut client, Pong(true)).await?;
-            }
-            protocol::Request::ListModels => {
-                let mut directory = fs::read_dir("/models").await?;
-                let mut models = Vec::new();
-
-                while let Some(entry) = directory.next_entry().await? {
-                    if !entry.metadata().await?.is_file() {
-                        continue;
-                    }
-
-                    if entry.path().extension().and_then(OsStr::to_str) != Some("safetensors") {
-                        continue;
-                    }
-
-                    models.push(
-                        entry
-                            .path()
-                            .file_stem()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .into_owned(),
-                    );
-                }
-
-                #[derive(Serialize)]
-                struct Response {
-                    models: Vec<String>,
-                }
-
-                protocol::send_json(&mut client, Response { models }).await?;
-            }
-            protocol::Request::GenerateImage {
-                definition,
-                preview_after,
-            } => {
-                #[derive(Serialize)]
-                struct Request {
-                    task: &'static str,
-                    model: String,
-                    prompt: String,
-                    negative_prompt: String,
-                    size: Size,
-                    quality: String,
-                    sampler: String,
-                    upscaler: Option<Upscaler>,
-                    steps: Steps,
-                    seed: u64,
-                    face_detail: Option<Detail>,
-                    hand_detail: Option<Detail>,
-                    inpaints: Vec<Inpaint>,
-                    loras: Vec<Lora>,
-                    preview_after: Option<f32>,
-                }
-
-                let request = Request {
-                    task: "generate_image",
-                    model: definition.model.name().to_owned(),
-                    prompt: definition.prompt.clone(),
-                    negative_prompt: definition.negative_prompt.clone(),
-                    size: definition.size,
-                    quality: definition.quality.to_string().to_lowercase(),
-                    sampler: match definition.sampler {
-                        Sampler::EulerAncestral => "euler_a",
-                        Sampler::DPMSDEKarras => "dpm++_sde_karras",
-                        Sampler::DPM2MKarras => "dpm++_2m_karras",
-                        Sampler::DPM2MSDEKarras => "dpm++_2m_sde_karras",
-                    }
-                    .to_owned(),
-                    upscaler: definition.upscaler,
-                    steps: definition.steps,
-                    seed: definition.seed.value(),
-                    face_detail: definition.face_detail,
-                    hand_detail: definition.hand_detail,
-                    inpaints: definition.inpaints.clone(),
-                    loras: definition.loras.clone(),
-                    preview_after,
-                };
-
-                let mut generation = net::TcpStream::connect("127.0.0.1:9148").await?;
-                protocol::send_json(&mut generation, request).await?;
-
-                io::copy(&mut generation, &mut client).await?;
-            }
+        if let Err(error) = router.handle(client).await {
+            log::error!("{error}");
         }
     }
+}
+
+async fn ping(mut client: protocol::Connection<bool, protocol::Never>) -> io::Result<()> {
+    client.write(true).await
+}
+
+async fn generate_image(
+    mut client: protocol::Connection<image::generate::Response, image::generate::Request>,
+) -> io::Result<()> {
+    #[derive(Serialize)]
+    struct Request {
+        model: String,
+        prompt: String,
+        negative_prompt: String,
+        size: Size,
+        quality: String,
+        sampler: String,
+        upscaler: Option<Upscaler>,
+        steps: Steps,
+        seed: u64,
+        face_detail: Option<Detail>,
+        hand_detail: Option<Detail>,
+        inpaints: Vec<Inpaint>,
+        loras: Vec<Lora>,
+        preview_after: Option<f32>,
+    }
+
+    let image::generate::Request {
+        definition,
+        preview_after,
+    } = client.read().await?;
+
+    let request = Request {
+        model: definition.model.name.clone(),
+        prompt: definition.prompt.clone(),
+        negative_prompt: definition.negative_prompt.clone(),
+        size: definition.size,
+        quality: definition.quality.to_string().to_lowercase(),
+        sampler: match definition.sampler {
+            Sampler::EulerAncestral => "euler_a",
+            Sampler::DPMSDEKarras => "dpm++_sde_karras",
+            Sampler::DPM2MKarras => "dpm++_2m_karras",
+            Sampler::DPM2MSDEKarras => "dpm++_2m_sde_karras",
+        }
+        .to_owned(),
+        upscaler: definition.upscaler,
+        steps: definition.steps,
+        seed: definition.seed.value(),
+        face_detail: definition.face_detail,
+        hand_detail: definition.hand_detail,
+        inpaints: definition.inpaints.clone(),
+        loras: definition.loras.clone(),
+        preview_after,
+    };
+
+    let mut generation =
+        protocol::Connection::new_unsafe(net::TcpStream::connect("127.0.0.1:9148").await?);
+
+    generation.write(request).await?;
+    generation.copy(&mut client).await?;
+
+    Ok(())
+}
+
+async fn list_models(
+    mut client: protocol::Connection<Vec<Model>, protocol::Never>,
+) -> io::Result<()> {
+    let mut directory = fs::read_dir("/models").await?;
+    let mut models = Vec::new();
+
+    while let Some(entry) = directory.next_entry().await? {
+        if !entry.metadata().await?.is_file() {
+            continue;
+        }
+
+        if entry.path().extension().and_then(OsStr::to_str) != Some("safetensors") {
+            continue;
+        }
+
+        models.push(Model {
+            name: entry
+                .path()
+                .file_stem()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+        });
+    }
+
+    client.write(models).await
 }

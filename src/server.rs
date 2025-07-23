@@ -58,7 +58,7 @@ impl Server {
             .spawn()?;
 
         // Wait until server is accepting connections
-        while protocol::ping().await.is_err() {
+        while ping().await.is_err() {
             time::sleep(time::Duration::from_millis(500)).await;
         }
 
@@ -79,4 +79,12 @@ impl Drop for Container {
             .stderr(process::Stdio::null())
             .spawn();
     }
+}
+
+pub const PING: protocol::Task<protocol::Never, bool> = protocol::Task::new("ping");
+
+async fn ping() -> Result<bool, Error> {
+    let mut stream = PING.start().await?;
+
+    Ok(stream.read().await?)
 }

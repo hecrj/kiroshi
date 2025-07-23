@@ -1,4 +1,3 @@
-use crate::protocol;
 use crate::stream::{SinkExt, Stream};
 use crate::{
     Detail, Error, Inpaint, Lora, Model, Quality, Rectangle, Sampler, Seed, Size, Steps, Upscaler,
@@ -23,32 +22,22 @@ impl Image {
         definition: Definition,
         preview_after: Option<f32>,
     ) -> impl Stream<Item = Result<Generation, Error>> {
-        #[derive(Deserialize)]
-        struct Response {
-            width: u32,
-            height: u32,
-            progress: f32,
-            is_final: bool,
-            #[serde(default)]
-            faces: Vec<[f32; 4]>,
-            #[serde(default)]
-            hands: Vec<[f32; 4]>,
-        }
-
         crate::stream::from_future(move |mut sender| async move {
-            let mut stream = protocol::perform(protocol::Request::GenerateImage {
-                definition: definition.clone(),
-                preview_after,
-            })
-            .await?;
-            let mut buffer = Vec::new();
+            let mut stream = generate::TASK.start().await?;
+
+            stream
+                .write(generate::Request {
+                    definition: definition.clone(),
+                    preview_after,
+                })
+                .await?;
 
             loop {
-                let response: Response = protocol::read_json(&mut stream, &mut buffer).await?;
-                let n_bytes = protocol::read_bytes(&mut stream, &mut buffer).await?;
+                let response = stream.read().await?;
+                let bytes = stream.read_bytes().await?;
 
                 let image = {
-                    let rgba = Bytes::from(buffer[..n_bytes].to_vec());
+                    let rgba = Bytes::from(bytes.to_vec());
                     let size = Size::new(response.width, response.height);
 
                     Image {
@@ -129,4 +118,31 @@ pub struct Definition {
     pub hand_detail: Option<Detail>,
     pub inpaints: Vec<Inpaint>,
     pub loras: Vec<Lora>,
+}
+
+pub mod generate {
+    use crate::image::Definition;
+    use crate::protocol;
+
+    use serde::{Deserialize, Serialize};
+
+    pub const TASK: protocol::Task<Request, Response> = protocol::Task::new("generate_image");
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Request {
+        pub definition: Definition,
+        pub preview_after: Option<f32>,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Response {
+        pub width: u32,
+        pub height: u32,
+        pub progress: f32,
+        pub is_final: bool,
+        #[serde(default)]
+        pub faces: Vec<[f32; 4]>,
+        #[serde(default)]
+        pub hands: Vec<[f32; 4]>,
+    }
 }
