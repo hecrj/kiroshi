@@ -81,10 +81,10 @@ impl Drop for Container {
     }
 }
 
-pub const PING: protocol::Task<protocol::Never, bool> = protocol::Task::new("ping");
+pub const PING: protocol::Plug<protocol::Never, bool> = protocol::Plug::new("ping");
 
 async fn ping() -> Result<bool, Error> {
-    let mut stream = PING.start().await?;
+    let mut stream = protocol::connect(PING).await?;
 
     Ok(stream.read().await?)
 }

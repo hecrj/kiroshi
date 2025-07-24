@@ -38,17 +38,17 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn run() -> Result<(), Error> {
-    let router = protocol::Router::new()
-        .endpoint(server::PING, ping)
-        .endpoint(image::generate::TASK, generate_image)
-        .endpoint(model::LIST, list_models);
+    let router = protocol::Strip::new()
+        .plug(server::PING, ping)
+        .plug(image::GENERATE, generate_image)
+        .plug(model::LIST, list_models);
 
     let server = net::TcpListener::bind(&format!("0.0.0.0:{}", protocol::PORT)).await?;
 
     loop {
         let (client, _) = server.accept().await?;
 
-        if let Err(error) = router.handle(client).await {
+        if let Err(error) = router.attach(client).await {
             log::error!("{error}");
         }
     }
@@ -108,7 +108,7 @@ async fn generate_image(
     };
 
     let mut generation =
-        protocol::Connection::new_unsafe(net::TcpStream::connect("127.0.0.1:9148").await?);
+        protocol::Connection::seize(net::TcpStream::connect("127.0.0.1:9148").await?);
 
     generation.write(request).await?;
     generation.copy(&mut client).await?;

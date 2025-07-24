@@ -1,3 +1,4 @@
+use crate::protocol;
 use crate::stream::{SinkExt, Stream};
 use crate::{
     Detail, Error, Inpaint, Lora, Model, Quality, Rectangle, Sampler, Seed, Size, Steps, Upscaler,
@@ -23,7 +24,7 @@ impl Image {
         preview_after: Option<f32>,
     ) -> impl Stream<Item = Result<Generation, Error>> {
         crate::stream::from_future(move |mut sender| async move {
-            let mut stream = generate::TASK.start().await?;
+            let mut stream = protocol::connect(GENERATE).await?;
 
             stream
                 .write(generate::Request {
@@ -120,13 +121,13 @@ pub struct Definition {
     pub loras: Vec<Lora>,
 }
 
+pub const GENERATE: protocol::Plug<generate::Request, generate::Response> =
+    protocol::Plug::new("generate_image");
+
 pub mod generate {
     use crate::image::Definition;
-    use crate::protocol;
 
     use serde::{Deserialize, Serialize};
-
-    pub const TASK: protocol::Task<Request, Response> = protocol::Task::new("generate_image");
 
     #[derive(Serialize, Deserialize)]
     pub struct Request {

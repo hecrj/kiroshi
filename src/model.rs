@@ -12,7 +12,7 @@ pub struct Model {
 
 impl Model {
     pub async fn list() -> Result<Vec<Self>, Error> {
-        let mut stream = LIST.start().await?;
+        let mut stream = protocol::connect(LIST).await?;
 
         Ok(stream.read().await?)
     }
@@ -24,4 +24,4 @@ impl fmt::Display for Model {
     }
 }
 
-pub const LIST: protocol::Task<protocol::Never, Vec<Model>> = protocol::Task::new("list_models");
+pub const LIST: protocol::Plug<protocol::Never, Vec<Model>> = protocol::Plug::new("list_models");

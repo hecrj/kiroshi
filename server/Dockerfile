@@ -3,6 +3,7 @@ FROM rust:1.88 AS build
 WORKDIR /kiroshi
 
 COPY Cargo.toml /kiroshi/.
+COPY Cargo.lock /kiroshi/.
 COPY src/ /kiroshi/src
 
 COPY server/src/ /kiroshi/server/src
