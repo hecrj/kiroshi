@@ -173,7 +173,7 @@ def generate(parameters: Parameters,
             parameters.model,
             config="sdxl-1.0",
             use_safetensors=True,
-            torch_dtype=torch.float16,
+            torch_dtype=torch.bfloat16,
             local_files_only=True,
         )
 
