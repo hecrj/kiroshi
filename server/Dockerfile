@@ -53,4 +53,6 @@ RUN curl -L -o weights/hand_yolov9c.pt https://huggingface.co/Bingsu/adetailer/r
 COPY server/. /kiroshi
 COPY --from=build /kiroshi/target/release/kiroshi-server kiroshi
 
+ENV YOLO_VERBOSE=false
+
 ENTRYPOINT ["./kiroshi"]
