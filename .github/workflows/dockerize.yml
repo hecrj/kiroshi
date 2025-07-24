@@ -6,6 +6,7 @@ on:
       - '.github/workflows/dockerize.yml'
       - 'src/**'
       - 'server/**'
+      - 'Cargo.lock'
 permissions:
   packages: write
 jobs:
