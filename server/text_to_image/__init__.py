@@ -43,21 +43,6 @@ class Sampler(Enum):
     DPM_2M_KARRAS = 2
     DPM_2M_SDE_KARRAS = 3
 
-last_parameters = None
-last_image = None
-last_face = None
-last_hand = None
-last_inpaints = None
-last_model = None
-last_loras = None
-last_sampler = None
-last_cpu_offload = None
-pipe = None
-inpainting_pipe = None
-upscaler_pipe = None
-last_upscaling = None
-semaphore = threading.Semaphore()
-
 
 @dataclass
 class Lora:
@@ -72,18 +57,26 @@ class Lora:
 
 
 @dataclass
+class Pag:
+    scale: float = 3.0
+
+    def from_dict(pag: dict):
+        return Pag(scale=pag['scale'])
+
+@dataclass
 class Parameters:
     model: str
     prompt: str
     width: int
     height: int
+    seed: int
     negative_prompt: str = ""
     steps: int = 30
     guidance: float = 5.0
-    seed: int | None = None
     quality: Quality = Quality.NORMAL
     loras: list[Lora] = field(default_factory=list)
     sampler: Sampler = Sampler.EULER_A
+    pag: Pag | None = None
 
 
 @dataclass
@@ -138,6 +131,18 @@ class Inpaint:
                        padding=inpaint['padding'],
                        blur_factor=inpaint['blur_factor'])
 
+last_parameters = Parameters(model="", prompt="", width=0, height=0, seed=0)
+last_image = None
+last_face = None
+last_hand = None
+last_inpaints = None
+last_cpu_offload = None
+pipe = None
+inpainting_pipe = None
+upscaler_pipe = None
+last_upscaling = None
+semaphore = threading.Semaphore()
+
 def generate(parameters: Parameters,
              upscaler: Upscaler | None = None,
              face_detail: Detail | None = None,
@@ -145,19 +150,21 @@ def generate(parameters: Parameters,
              inpaints: list[Inpaint] | None = None,
              on_progress: Callable[float, Image] | None = None,
              cpu_offload: bool = False) -> Generation:
-    global last_parameters, last_image, last_face, last_hand, last_inpaints, last_generator, last_model, last_loras, last_sampler, last_cpu_offload
+    global last_parameters, last_image, last_face, last_hand, last_inpaints, last_cpu_offload
     global pipe, inpainting_pipe, last_upscaling, upscaler_pipe, compel_proc, semaphore
     semaphore.acquire()
 
-    from diffusers import AutoPipelineForInpainting, StableDiffusionXLPipeline
+    from diffusers import AutoPipelineForInpainting, AutoPipelineForText2Image, StableDiffusionXLPipeline
     from compel import Compel, ReturnedEmbeddingsType
     from RealESRGAN import RealESRGAN
     import torch
 
-    if parameters.loras != last_loras:
-        last_model = None
+    is_new_pipe = (parameters.model != last_parameters.model or
+        parameters.loras != last_parameters.loras or
+        (parameters.pag is None) != (last_parameters.pag is None) or
+        cpu_offload != last_cpu_offload)
 
-    if last_model != parameters.model or last_cpu_offload != cpu_offload:
+    if is_new_pipe:
         del pipe, inpainting_pipe
         gc.collect()
         torch.cuda.empty_cache()
@@ -167,13 +174,19 @@ def generate(parameters: Parameters,
             config="sdxl-1.0",
             use_safetensors=True,
             torch_dtype=torch.float16,
-            local_files_only=True)
+            local_files_only=True,
+        )
+
+        if parameters.pag:
+            pipe = AutoPipelineForText2Image.from_pipe(
+                pipe,
+                enable_pag=True,
+                pag_applied_layers=["mid"]
+            )
+
         pipe = pipe.to("cuda")
         pipe.safety_checker = None
 
-        last_model = parameters.model
-        last_loras = parameters.loras
-        last_sampler = None
         last_image = None
         last_face = None
         last_cpu_offload = cpu_offload
@@ -218,7 +231,7 @@ def generate(parameters: Parameters,
         if cpu_offload:
             pipe.enable_model_cpu_offload()
 
-    if last_sampler != parameters.sampler:
+    if is_new_pipe or parameters.sampler != last_parameters.sampler:
         match parameters.sampler:
             case Sampler.EULER_A:
                 from diffusers import EulerAncestralDiscreteScheduler
@@ -260,7 +273,6 @@ def generate(parameters: Parameters,
                 )
 
         inpainting_pipe = AutoPipelineForInpainting.from_pipe(pipe)
-        last_sampler = parameters.sampler
 
     if not upscaler is None and last_upscaling != upscaler.model:
         weight = upscaler.model.weight()
@@ -295,10 +307,7 @@ def generate(parameters: Parameters,
      ] = compel_proc.pad_conditioning_tensors_to_same_length(
          [prompt_embeds, negative_prompt_embeds])
 
-    if not parameters.seed is None:
-        generator = torch.Generator(device="cuda").manual_seed(parameters.seed)
-    else:
-        generator = None
+    generator = torch.Generator(device="cuda").manual_seed(parameters.seed)
 
     match parameters.quality:
         case Quality.LOW:
@@ -324,7 +333,7 @@ def generate(parameters: Parameters,
         generator=generator,
         on_step_end=on_step_end)
 
-    is_new = last_image is None or parameters.seed is None or parameters != last_parameters
+    is_new = last_image is None or parameters != last_parameters
 
     try:
         if is_new:
@@ -341,19 +350,14 @@ def generate(parameters: Parameters,
                 generator=configuration.generator,
                 callback_on_step_end=configuration.on_step_end,
                 callback_on_step_end_tensor_inputs=["latents"],
+                pag_scale=parameters.pag.scale if parameters.pag else 0,
             ).images[0]
 
             last_face = None
             last_hand = None
             last_inpaints = None
-
-            if parameters.seed is None:
-                last_parameters = None
-                last_image = None
-            else:
-                last_parameters = parameters
-                last_image = Cache(
-                    value=image, generator=configuration.generator.get_state())
+            last_parameters = parameters
+            last_image = Cache(value=image, generator=configuration.generator.get_state())
         else:
             image = last_image.value
             configuration.generator.set_state(last_image.generator)
@@ -375,13 +379,10 @@ def generate(parameters: Parameters,
                 last_hand = None
                 last_inpaints = None
 
-                if parameters.seed is None:
-                    last_face = None
-                else:
-                    last_face = Cache(
-                        key=face_detail,
-                        value=(image, faces),
-                        generator=configuration.generator.get_state())
+                last_face = Cache(
+                    key=face_detail,
+                    value=(image, faces),
+                    generator=configuration.generator.get_state())
             else:
                 (image, faces) = last_face.value
                 configuration.generator.set_state(last_face.generator)
@@ -398,13 +399,10 @@ def generate(parameters: Parameters,
 
                 last_inpaints = None
 
-                if parameters.seed is None:
-                    last_hand = None
-                else:
-                    last_hand = Cache(
-                        key=hand_detail,
-                        value=(image, hands),
-                        generator=configuration.generator.get_state())
+                last_hand = Cache(
+                    key=hand_detail,
+                    value=(image, hands),
+                    generator=configuration.generator.get_state())
             else:
                 (image, hands) = last_hand.value
                 configuration.generator.set_state(last_hand.generator)

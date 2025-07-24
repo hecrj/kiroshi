@@ -45,6 +45,7 @@ async def generate_image(writer, message):
     preview_after = message.get('preview_after')
     face_detail = message.get('face_detail')
     hand_detail = message.get('hand_detail')
+    pag = message.get('pag')
     cpu_offload = message.get('cpu_offload') or False
 
     if not upscaler is None:
@@ -58,12 +59,14 @@ async def generate_image(writer, message):
     if preview_after is None:
         preview_after = 1.0
 
-
     if not face_detail is None:
         face_detail = text_to_image.Detail.from_dict(face_detail)
 
     if not hand_detail is None:
         hand_detail = text_to_image.Detail.from_dict(hand_detail)
+
+    if not pag is None:
+        pag = text_to_image.Pag.from_dict(pag)
 
     if inpaints:
         inpaints = [text_to_image.Inpaint.from_dict(inpaint) for inpaint in inpaints]
@@ -134,7 +137,8 @@ async def generate_image(writer, message):
                                               seed=seed,
                                               negative_prompt=negative_prompt,
                                               loras=loras,
-                                              sampler=sampler)
+                                              sampler=sampler,
+                                              pag=pag)
 
         return text_to_image.generate(parameters=parameters,
                                       upscaler=upscaler,

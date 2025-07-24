@@ -1,7 +1,7 @@
 use kiroshi::image;
 use kiroshi::model;
 use kiroshi::server;
-use kiroshi::{Detail, Error, Inpaint, Lora, Model, Sampler, Size, Steps, Upscaler, protocol};
+use kiroshi::{Detail, Error, Inpaint, Lora, Model, Pag, Sampler, Size, Steps, Upscaler, protocol};
 
 use futures::future;
 use serde::Serialize;
@@ -70,6 +70,7 @@ async fn generate_image(
         quality: String,
         sampler: String,
         upscaler: Option<Upscaler>,
+        pag: Option<Pag>,
         steps: Steps,
         seed: u64,
         face_detail: Option<Detail>,
@@ -98,6 +99,7 @@ async fn generate_image(
         }
         .to_owned(),
         upscaler: definition.upscaler,
+        pag: definition.pag,
         steps: definition.steps,
         seed: definition.seed.value(),
         face_detail: definition.face_detail,

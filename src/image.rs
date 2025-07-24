@@ -1,7 +1,8 @@
 use crate::protocol;
 use crate::stream::{SinkExt, Stream};
 use crate::{
-    Detail, Error, Inpaint, Lora, Model, Quality, Rectangle, Sampler, Seed, Size, Steps, Upscaler,
+    Detail, Error, Inpaint, Lora, Model, Pag, Quality, Rectangle, Sampler, Seed, Size, Steps,
+    Upscaler,
 };
 
 use bytes::Bytes;
@@ -115,6 +116,7 @@ pub struct Definition {
     pub quality: Quality,
     pub sampler: Sampler,
     pub upscaler: Option<Upscaler>,
+    pub pag: Option<Pag>,
     pub face_detail: Option<Detail>,
     pub hand_detail: Option<Detail>,
     pub inpaints: Vec<Inpaint>,
