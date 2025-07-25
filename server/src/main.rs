@@ -1,7 +1,9 @@
 use kiroshi::image;
 use kiroshi::model;
 use kiroshi::server;
-use kiroshi::{Detail, Error, Inpaint, Lora, Model, Pag, Sampler, Size, Steps, Upscaler, protocol};
+use kiroshi::{
+    Detail, Error, Guidance, Inpaint, Lora, Model, Pag, Sampler, Size, Steps, Upscaler, protocol,
+};
 
 use futures::future;
 use serde::Serialize;
@@ -64,14 +66,16 @@ async fn generate_image(
     #[derive(Serialize)]
     struct Request {
         model: String,
+        precision: String,
         prompt: String,
         negative_prompt: String,
         size: Size,
         quality: String,
         sampler: String,
         upscaler: Option<Upscaler>,
-        pag: Option<Pag>,
         steps: Steps,
+        guidance: Guidance,
+        pag: Option<Pag>,
         seed: u64,
         face_detail: Option<Detail>,
         hand_detail: Option<Detail>,
@@ -87,6 +91,12 @@ async fn generate_image(
 
     let request = Request {
         model: definition.model.name.clone(),
+        precision: match definition.precision {
+            kiroshi::Precision::Float16 => "float16",
+            kiroshi::Precision::BFloat16 => "bfloat16",
+            kiroshi::Precision::Float32 => "float32",
+        }
+        .to_owned(),
         prompt: definition.prompt.clone(),
         negative_prompt: definition.negative_prompt.clone(),
         size: definition.size,
@@ -99,8 +109,9 @@ async fn generate_image(
         }
         .to_owned(),
         upscaler: definition.upscaler,
-        pag: definition.pag,
         steps: definition.steps,
+        guidance: definition.guidance,
+        pag: definition.pag,
         seed: definition.seed.value(),
         face_detail: definition.face_detail,
         hand_detail: definition.hand_detail,

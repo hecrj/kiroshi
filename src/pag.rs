@@ -12,18 +12,23 @@ pub struct Pag {
 pub struct Scale(f64);
 
 impl Scale {
-    pub const RANGE: RangeInclusive<Self> = Self(0.0)..=Self(10.0);
+    pub const ZERO: Self = Self(0.0);
+    pub const RANGE: RangeInclusive<Self> = Self::ZERO..=Self(10.0);
 }
 
 impl Default for Scale {
     fn default() -> Self {
-        Self(3.0)
+        Self::ZERO
     }
 }
 
 impl fmt::Display for Scale {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:.2}", self.0)
+        if self.0 > 0.0 {
+            write!(f, "{:.2}", self.0)
+        } else {
+            f.write_str("Disabled")
+        }
     }
 }
 

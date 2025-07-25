@@ -1,8 +1,8 @@
 use crate::protocol;
 use crate::stream::{SinkExt, Stream};
 use crate::{
-    Detail, Error, Inpaint, Lora, Model, Pag, Quality, Rectangle, Sampler, Seed, Size, Steps,
-    Upscaler,
+    Detail, Error, Guidance, Inpaint, Lora, Model, Pag, Precision, Quality, Rectangle, Sampler,
+    Seed, Size, Steps, Upscaler,
 };
 
 use bytes::Bytes;
@@ -108,11 +108,13 @@ pub enum Generation {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Definition {
     pub model: Model,
+    pub precision: Precision,
     pub prompt: String,
     pub negative_prompt: String,
     pub size: Size,
     pub seed: Seed,
     pub steps: Steps,
+    pub guidance: Guidance,
     pub quality: Quality,
     pub sampler: Sampler,
     pub upscaler: Option<Upscaler>,

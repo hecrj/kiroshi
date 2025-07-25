@@ -36,8 +36,10 @@ async def generate_image(writer, message):
     negative_prompt = message['negative_prompt']
     size = message['size']
     quality = message['quality']
-    steps = message.get('steps')
-    seed = message.get('seed')
+    steps = message['steps']
+    guidance = message['guidance']
+    seed = message['seed']
+    precision = message.get('precision') or 'bfloat16'
     inpaints = message.get('inpaints') or []
     loras = message.get('loras') or []
     sampler = message.get('sampler') or 'euler_a'
@@ -99,6 +101,12 @@ async def generate_image(writer, message):
         case 'dpm++_2m_sde_karras':
             sampler = text_to_image.Sampler.DPM_2M_SDE_KARRAS
 
+    precision = {
+        'float16': text_to_image.Precision.FLOAT16,
+        'bfloat16': text_to_image.Precision.BFLOAT16,
+        'float32': text_to_image.Precision.FLOAT32,
+    }.get(precision, text_to_image.Precision.BFLOAT16)
+
     loop = asyncio.get_running_loop()
 
     class Interrupt(Exception):
@@ -130,12 +138,14 @@ async def generate_image(writer, message):
     def generate():
         parameters = text_to_image.Parameters(model=model,
                                               prompt=prompt,
+                                              negative_prompt=negative_prompt,
                                               width=size['width'],
                                               height=size['height'],
+                                              precision=precision,
                                               quality=quality,
                                               steps=steps,
+                                              guidance=guidance,
                                               seed=seed,
-                                              negative_prompt=negative_prompt,
                                               loras=loras,
                                               sampler=sampler,
                                               pag=pag)

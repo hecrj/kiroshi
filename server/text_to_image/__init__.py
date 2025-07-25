@@ -11,12 +11,28 @@ import gc
 import time
 from pathlib import Path
 
+class Precision(Enum):
+    FLOAT16 = 0
+    BFLOAT16 = 1
+    FLOAT32 = 2
+
+    def dtype(self):
+        match self:
+            case Precision.FLOAT16:
+                return torch.float16
+            case Precision.BFLOAT16:
+                return torch.bfloat16
+            case Precision.FLOAT32:
+                return torch.float32
+
+
 class Quality(Enum):
     LOW = 0
     NORMAL = 1
     HIGH = 2
     ULTRA = 3
     INSANE = 4
+
 
 class Upscaling(Enum):
     REAL_ESRGAN_2X = 0
@@ -71,6 +87,7 @@ class Parameters:
     height: int
     seed: int
     negative_prompt: str = ""
+    precision: Precision = Precision.BFLOAT16
     steps: int = 30
     guidance: float = 5.0
     quality: Quality = Quality.NORMAL
@@ -160,6 +177,7 @@ def generate(parameters: Parameters,
     import torch
 
     is_new_pipe = (parameters.model != last_parameters.model or
+        parameters.precision != last_parameters.precision or
         parameters.loras != last_parameters.loras or
         (parameters.pag is None) != (last_parameters.pag is None) or
         cpu_offload != last_cpu_offload)
@@ -173,7 +191,7 @@ def generate(parameters: Parameters,
             parameters.model,
             config="sdxl-1.0",
             use_safetensors=True,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=parameters.precision.dtype(),
             local_files_only=True,
         )
 
