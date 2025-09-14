@@ -1,0 +1,22 @@
+[project]
+name = "kiroshi"
+version = "0.1.0"
+description = "An opinionated image diffusion server"
+readme = "README.md"
+requires-python = "==3.11.12"
+dependencies = [
+    "accelerate>=1.10.1",
+    "adetailer",
+    "compel>=2.1.1",
+    "diffusers>=0.35.1",
+    "numpy>=2.3.1",
+    "pillow>=11.3.0",
+    "realesrgan",
+    "torch>=2.8.0",
+    "torchvision>=0.23.0",
+    "transformers>=4.56.1",
+]
+
+[tool.uv.sources]
+realesrgan = { git = "https://github.com/hecrj/RealESRGAN.git", rev = "195df05862c92a3ad3497bcab8bbb4cef366d3af" }
+adetailer = { git = "https://github.com/hecrj/adetailer.git", rev = "25e7509fe018de8aa063a5f1902598f5eda0c06c" }

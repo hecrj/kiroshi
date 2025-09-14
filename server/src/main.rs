@@ -21,7 +21,8 @@ async fn main() -> Result<(), Error> {
     let mut interrupt = unix::signal(unix::SignalKind::interrupt())?;
     let mut terminate = unix::signal(unix::SignalKind::terminate())?;
 
-    let generation = process::Command::new(".env/bin/python")
+    let generation = process::Command::new("uv")
+        .arg("run")
         .arg("main.py")
         .spawn()
         .expect("Start generation server");
