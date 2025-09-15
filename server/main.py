@@ -1,4 +1,4 @@
-import text_to_image
+import image
 
 import asyncio
 import json
@@ -7,12 +7,12 @@ import torch
 import gc
 import multiprocessing
 import signal
-import os
-from PIL import ImageFilter
+import PIL.Image
+import PIL.ImageFilter
 
 
 async def server():
-    server = await asyncio.start_server(instance, '0.0.0.0', 9148)
+    server = await asyncio.start_server(instance, "0.0.0.0", 9148)
     print("[kiroshi] Server started at 0.0.0.0:9148")
 
     async with server:
@@ -20,163 +20,148 @@ async def server():
 
 
 async def instance(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-    size = await reader.readexactly(8)
-    size = int.from_bytes(size, "big", signed=False)
-
-    message = await reader.readexactly(size)
+    message = await read(reader)
     message = json.loads(message)
 
     print(f"[kiroshi] Received: {message}")
-    await generate_image(writer, message)
+
+    match message["task"]:
+        case "generate_image":
+            recipe = image.Recipe.from_dict(message)
+
+            await run(image.generate, writer, message, recipe)
+
+        case "detail_faces":
+            recipe = image.Recipe.from_dict(message)
+            detail = image.Detail.from_dict(message["detail"])
+            input = await read_image(reader, writer, recipe.size)
+
+            await run(image.detail_faces, writer, message, recipe, detail, input)
+
+        case "detail_hands":
+            recipe = image.Recipe.from_dict(message)
+            detail = image.Detail.from_dict(message["detail"])
+            input = await read_image(reader, writer, recipe.size)
+
+            await run(image.detail_hands, writer, message, recipe, detail, input)
+
+        case "upscale":
+            upscaler = image.Upscaler.from_dict(message["upscaler"])
+            size = image.Size.from_dict(message["size"])
+            input = await read_image(reader, writer, size)
+
+            await run(image.upscale, writer, message, upscaler, input)
+
+        case task:
+            print(f"unknown task: {task}")
+            pass
 
 
-async def generate_image(writer, message):
-    model = f"/models/{message['model']}.safetensors"
-    prompt = message['prompt']
-    negative_prompt = message['negative_prompt']
-    size = message['size']
-    quality = message['quality']
-    steps = message['steps']
-    guidance = message['guidance']
-    seed = message['seed']
-    precision = message.get('precision') or 'bfloat16'
-    inpaints = message.get('inpaints') or []
-    loras = message.get('loras') or []
-    sampler = message.get('sampler') or 'euler_a'
-    upscaler = message.get('upscaler')
-    preview_after = message.get('preview_after')
-    face_detail = message.get('face_detail')
-    hand_detail = message.get('hand_detail')
-    pag = message.get('pag')
-    cpu_offload = message.get('cpu_offload') or False
+# TODO: LRU cache
+cache = {}
 
-    if not upscaler is None:
-        upscaling = {
-            '2x-real_esrgan': text_to_image.Upscaling.REAL_ESRGAN_2X,
-            '4x-ultrasharp': text_to_image.Upscaling.ULTRASHARP_4X,
-        }.get(upscaler['model'], text_to_image.Upscaling.ULTRASHARP_4X)
 
-        upscaler = text_to_image.Upscaler(model=upscaling, tile_size=upscaler['tile_size'], tile_padding=upscaler['tile_padding'])
+async def read_image(
+    reader: asyncio.StreamReader,
+    writer: asyncio.StreamWriter,
+    size: image.Size,
+) -> image.Image:
+    h = await read(reader)
+    h = int.from_bytes(h, "big", signed=True)
 
-    if preview_after is None:
-        preview_after = 1.0
+    print(f"[kiroshi] Reading image: {h}")
+    result = cache.get(h)
 
-    if not face_detail is None:
-        face_detail = text_to_image.Detail.from_dict(face_detail)
+    if result is None:
+        print("[kiroshi] Image is not cached")
+        await send(writer, bytes([0]))
 
-    if not hand_detail is None:
-        hand_detail = text_to_image.Detail.from_dict(hand_detail)
+        rgba = await read(reader)
 
-    if not pag is None:
-        pag = text_to_image.Pag.from_dict(pag)
+        start = time.time()
+        rgb = PIL.Image.frombytes("RGBA", (size.width, size.height), rgba).convert(
+            "RGB"
+        )
+        print(f"Converted to RGB: {time.time() - start}")
 
-    if inpaints:
-        inpaints = [text_to_image.Inpaint.from_dict(inpaint) for inpaint in inpaints]
+        cache[h] = [rgb, None]
+        return image.Image(rgb, h)
+    else:
+        print("[kiroshi] Image is cached")
+        await send(writer, bytes([1]))
 
-    if loras:
-        loras = [text_to_image.Lora.from_dict(lora) for lora in loras]
+        return image.Image(result[0], h)
 
-    match quality:
-        case 'low':
-            quality = text_to_image.Quality.LOW
-        case 'normal':
-            quality = text_to_image.Quality.NORMAL
-        case 'high':
-            quality = text_to_image.Quality.HIGH
-        case 'ultra':
-            quality = text_to_image.Quality.ULTRA
-        case 'insane':
-            quality = text_to_image.Quality.INSANE
 
-    match sampler:
-        case 'euler_a':
-            sampler = text_to_image.Sampler.EULER_A
+async def run(f, writer, message, *args):
+    global cache
 
-        case 'dpm++_sde_karras':
-            sampler = text_to_image.Sampler.DPM_SDE_KARRAS
+    h = hash(tuple(args))
+    result = cache.get(h)
 
-        case 'dpm++_2m_karras':
-            sampler = text_to_image.Sampler.DPM_2M_KARRAS
+    if result is None:
+        loop = asyncio.get_running_loop()
+        preview_after = message.get("preview_after", 1.0)
 
-        case 'dpm++_2m_sde_karras':
-            sampler = text_to_image.Sampler.DPM_2M_SDE_KARRAS
+        def on_progress(ratio, preview):
+            if writer.is_closing():
+                raise Interrupt()
 
-    precision = {
-        'float16': text_to_image.Precision.FLOAT16,
-        'bfloat16': text_to_image.Precision.BFLOAT16,
-        'float32': text_to_image.Precision.FLOAT32,
-    }.get(precision, text_to_image.Precision.BFLOAT16)
+            if ratio <= preview_after:
+                return
 
-    loop = asyncio.get_running_loop()
+            preview = preview.filter(PIL.ImageFilter.GaussianBlur)
+            preview.putalpha(255)
 
-    class Interrupt(Exception):
-        pass
+            async def send_progress():
+                await send_json(
+                    writer,
+                    {
+                        "id": h,
+                        "width": preview.width,
+                        "height": preview.height,
+                        "progress": ratio,
+                        "is_final": False,
+                    },
+                )
 
-    def on_progress(ratio, preview):
-        if writer.is_closing():
-            raise Interrupt()
+                await send(writer, preview.tobytes())
 
-        if ratio <= preview_after:
-            return
+            asyncio.run_coroutine_threadsafe(send_progress(), loop)
 
-        preview = preview.filter(ImageFilter.GaussianBlur)
-        preview.putalpha(255)
+        start = time.time()
+        result = await asyncio.to_thread(lambda: f(*args, on_progress=on_progress))
+        print(f"Generated: {time.time() - start}s")
 
-        async def send_progress():
-            await send_json(
-                writer, {
-                    'width': preview.width,
-                    'height': preview.height,
-                    'progress': ratio,
-                    'is_final': False
-                })
+        if not isinstance(result, tuple):
+            result = (result, {})
 
-            await send(writer, preview.tobytes())
+        image, metadata = result
+        print(f"Metadata: {metadata}")
 
-        asyncio.run_coroutine_threadsafe(send_progress(), loop)
+        result = [image, metadata]
+        cache[h] = result
 
-    def generate():
-        parameters = text_to_image.Parameters(model=model,
-                                              prompt=prompt,
-                                              negative_prompt=negative_prompt,
-                                              width=size['width'],
-                                              height=size['height'],
-                                              precision=precision,
-                                              quality=quality,
-                                              steps=steps,
-                                              guidance=guidance,
-                                              seed=seed,
-                                              loras=loras,
-                                              sampler=sampler,
-                                              pag=pag)
-
-        return text_to_image.generate(parameters=parameters,
-                                      upscaler=upscaler,
-                                      face_detail=face_detail,
-                                      hand_detail=hand_detail,
-                                      inpaints=inpaints,
-                                      on_progress=on_progress,
-                                      cpu_offload=cpu_offload)
+    image, metadata = result
 
     start = time.time()
-    generation = await asyncio.to_thread(generate)
-    print(f"Generated: {time.time() - start}s")
-
-    start = time.time()
-    generation.image.putalpha(255)
+    image = image.copy()
+    image.putalpha(255)
     print(f"Added alpha layer: {time.time() - start}s")
 
     start = time.time()
     await send_json(
-        writer, {
-            'width': generation.image.width,
-            'height': generation.image.height,
-            'faces': generation.faces,
-            'hands': generation.hands,
-            'progress': 1.0,
-            'is_final': True,
-        })
-    await send(writer, generation.image.tobytes())
+        writer,
+        {
+            "id": h,
+            "width": image.width,
+            "height": image.height,
+            "progress": 1.0,
+            "is_final": True,
+            **metadata,
+        },
+    )
+    await send(writer, image.tobytes())
     print(f"Sent: {time.time() - start}s")
 
     writer.close()
@@ -186,8 +171,15 @@ async def generate_image(writer, message):
     torch.cuda.empty_cache()
 
 
+async def read(reader: asyncio.StreamReader) -> bytes:
+    n = await reader.readexactly(8)
+    n = int.from_bytes(n, "big", signed=False)
+
+    return await reader.readexactly(n)
+
+
 async def send_json(writer: asyncio.StreamWriter, data={}):
-    data = json.dumps(data).encode('utf-8')
+    data = json.dumps(data).encode("utf-8")
     size = len(data)
 
     writer.write(int.to_bytes(size, 8, "big", signed=False))
@@ -203,7 +195,12 @@ async def send(writer: asyncio.StreamWriter, data):
     await writer.drain()
 
 
-if __name__ == '__main__':
+class Interrupt(Exception):
+    pass
+
+
+if __name__ == "__main__":
+
     def terminate(signum, frame):
         print("[kiroshi] Exiting...")
         raise KeyboardInterrupt

@@ -1,17 +1,19 @@
 use crate::protocol;
 use crate::stream::{SinkExt, Stream};
 use crate::{
-    Detail, Error, Guidance, Inpaint, Lora, Model, Pag, Precision, Quality, Rectangle, Sampler,
-    Seed, Size, Steps, Upscaler,
+    Detail, Error, Guidance, Lora, Model, Pag, Precision, Quality, Rectangle, Sampler, Seed, Size,
+    Steps, Upscaler,
 };
 
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
 use std::fmt;
+use std::io;
 
 #[derive(Clone)]
 pub struct Image {
+    pub id: Id,
     pub rgba: Bytes,
     pub size: Size,
     pub definition: Definition,
@@ -20,17 +22,13 @@ pub struct Image {
 impl Image {
     pub const DEFAULT_SIZE: Size = Size::new(512, 768);
 
-    pub fn generate(
-        definition: Definition,
-        preview_after: Option<f32>,
-    ) -> impl Stream<Item = Result<Generation, Error>> {
+    pub fn generate(definition: Definition) -> impl Stream<Item = Result<Generation, Error>> {
         crate::stream::from_future(move |mut sender| async move {
             let mut stream = protocol::connect(GENERATE).await?;
 
             stream
                 .write(generate::Request {
                     definition: definition.clone(),
-                    preview_after,
                 })
                 .await?;
 
@@ -43,6 +41,7 @@ impl Image {
                     let size = Size::new(response.width, response.height);
 
                     Image {
+                        id: response.id,
                         rgba,
                         size,
                         definition: definition.clone(),
@@ -53,16 +52,7 @@ impl Image {
                     .send(if response.is_final {
                         Generation::Finished {
                             image,
-                            faces: response
-                                .faces
-                                .into_iter()
-                                .map(Rectangle::from_array)
-                                .collect(),
-                            hands: response
-                                .hands
-                                .into_iter()
-                                .map(Rectangle::from_array)
-                                .collect(),
+                            metadata: (),
                         }
                     } else {
                         Generation::Sampling {
@@ -80,6 +70,170 @@ impl Image {
             Ok(())
         })
     }
+
+    pub fn detail_faces<'a>(
+        &self,
+        detail: Detail,
+    ) -> impl Stream<Item = Result<Generation<Vec<Rectangle>>, Error>> + 'a {
+        let image = self.clone();
+
+        crate::stream::from_future(move |mut sender| async move {
+            let mut stream = protocol::connect(DETAIL_FACES).await?;
+
+            stream
+                .write(detail_faces::Request {
+                    definition: image.definition.clone(),
+                    detail,
+                })
+                .await?;
+
+            image.send(&mut stream).await?;
+
+            loop {
+                let response = stream.read().await?;
+                let bytes = stream.read_bytes().await?;
+
+                let image = {
+                    let rgba = Bytes::from(bytes.to_vec());
+                    let size = Size::new(response.width, response.height);
+
+                    Image {
+                        id: response.id,
+                        rgba,
+                        size,
+                        definition: image.definition.clone(),
+                    }
+                };
+
+                let _ = sender
+                    .send(if response.is_final {
+                        Generation::Finished {
+                            image,
+                            metadata: response.faces,
+                        }
+                    } else {
+                        Generation::Sampling {
+                            image,
+                            progress: response.progress,
+                        }
+                    })
+                    .await;
+
+                if response.is_final {
+                    break;
+                }
+            }
+
+            Ok(())
+        })
+    }
+
+    pub fn detail_hands<'a>(
+        &self,
+        detail: Detail,
+    ) -> impl Stream<Item = Result<Generation<Vec<Rectangle>>, Error>> + 'a {
+        let image = self.clone();
+
+        crate::stream::from_future(move |mut sender| async move {
+            let mut stream = protocol::connect(DETAIL_HANDS).await?;
+
+            stream
+                .write(detail_hands::Request {
+                    definition: image.definition.clone(),
+                    detail,
+                })
+                .await?;
+
+            image.send(&mut stream).await?;
+
+            loop {
+                let response = stream.read().await?;
+                let bytes = stream.read_bytes().await?;
+
+                let image = {
+                    let rgba = Bytes::from(bytes.to_vec());
+                    let size = Size::new(response.width, response.height);
+
+                    Image {
+                        id: response.id,
+                        rgba,
+                        size,
+                        definition: image.definition.clone(),
+                    }
+                };
+
+                let _ = sender
+                    .send(if response.is_final {
+                        Generation::Finished {
+                            image,
+                            metadata: response.hands,
+                        }
+                    } else {
+                        Generation::Sampling {
+                            image,
+                            progress: response.progress,
+                        }
+                    })
+                    .await;
+
+                if response.is_final {
+                    break;
+                }
+            }
+
+            Ok(())
+        })
+    }
+
+    pub fn upscale<'a>(
+        &self,
+        upscaler: Upscaler,
+    ) -> impl Future<Output = Result<Image, Error>> + 'a {
+        let image = self.clone();
+
+        async move {
+            let mut stream = protocol::connect(UPSCALE).await?;
+
+            stream
+                .write(upscale::Request {
+                    upscaler,
+                    size: image.size,
+                })
+                .await?;
+
+            image.send(&mut stream).await?;
+
+            let upscale::Response { id, width, height } = stream.read().await?;
+            let rgba = stream.read_bytes().await?;
+            let size = Size::new(width, height);
+
+            Ok(Self {
+                id,
+                rgba: Bytes::from(rgba.to_vec()),
+                size,
+                definition: Definition {
+                    size,
+                    ..image.definition
+                },
+            })
+        }
+    }
+
+    async fn send<I, O>(&self, stream: &mut plug::Connection<I, O>) -> io::Result<()>
+    where
+        I: Serialize,
+    {
+        stream.write_bytes(&self.id.0.to_be_bytes()).await?;
+
+        let n = stream.read_bytes().await?;
+
+        // Image is cached by the server
+        if n == [1] {
+            return Ok(());
+        }
+
+        stream.write_bytes(&self.rgba).await
+    }
 }
 
 impl fmt::Debug for Image {
@@ -92,17 +246,13 @@ impl fmt::Debug for Image {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Id(i64);
+
 #[derive(Debug, Clone)]
-pub enum Generation {
-    Sampling {
-        image: Image,
-        progress: f32,
-    },
-    Finished {
-        image: Image,
-        faces: Vec<Rectangle>,
-        hands: Vec<Rectangle>,
-    },
+pub enum Generation<T = ()> {
+    Sampling { image: Image, progress: f32 },
+    Finished { image: Image, metadata: T },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -115,39 +265,120 @@ pub struct Definition {
     pub seed: Seed,
     pub steps: Steps,
     pub guidance: Guidance,
-    pub quality: Quality,
     pub sampler: Sampler,
-    pub upscaler: Option<Upscaler>,
     pub pag: Option<Pag>,
-    pub face_detail: Option<Detail>,
-    pub hand_detail: Option<Detail>,
-    pub inpaints: Vec<Inpaint>,
     pub loras: Vec<Lora>,
+}
+
+impl Definition {
+    pub fn with_quality(mut self, quality: Quality) -> Self {
+        let scale = quality.scale_factor();
+
+        self.size = Size::new(
+            (self.size.width as f32 * scale).round() as u32,
+            (self.size.height as f32 * scale).round() as u32,
+        );
+
+        self
+    }
 }
 
 pub const GENERATE: protocol::Plug<generate::Request, generate::Response> =
     protocol::Plug::new("generate_image");
 
 pub mod generate {
-    use crate::image::Definition;
+    use crate::image::{Definition, Id};
 
     use serde::{Deserialize, Serialize};
 
     #[derive(Serialize, Deserialize)]
     pub struct Request {
         pub definition: Definition,
-        pub preview_after: Option<f32>,
     }
 
     #[derive(Serialize, Deserialize)]
     pub struct Response {
+        pub id: Id,
+        pub width: u32,
+        pub height: u32,
+        pub progress: f32,
+        pub is_final: bool,
+    }
+}
+
+pub const DETAIL_FACES: protocol::Plug<detail_faces::Request, detail_faces::Response> =
+    protocol::Plug::new("detail_faces");
+
+pub mod detail_faces {
+    use crate::image::{Definition, Id};
+    use crate::{Detail, Rectangle};
+
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Request {
+        pub definition: Definition,
+        pub detail: Detail,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Response {
+        pub id: Id,
         pub width: u32,
         pub height: u32,
         pub progress: f32,
         pub is_final: bool,
         #[serde(default)]
-        pub faces: Vec<[f32; 4]>,
+        pub faces: Vec<Rectangle>,
+    }
+}
+
+pub const DETAIL_HANDS: protocol::Plug<detail_hands::Request, detail_hands::Response> =
+    protocol::Plug::new("detail_hands");
+
+pub mod detail_hands {
+    use crate::image::{Definition, Id};
+    use crate::{Detail, Rectangle};
+
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Request {
+        pub definition: Definition,
+        pub detail: Detail,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Response {
+        pub id: Id,
+        pub width: u32,
+        pub height: u32,
+        pub progress: f32,
+        pub is_final: bool,
         #[serde(default)]
-        pub hands: Vec<[f32; 4]>,
+        pub hands: Vec<Rectangle>,
+    }
+}
+
+pub const UPSCALE: protocol::Plug<upscale::Request, upscale::Response> =
+    protocol::Plug::new("upscale");
+
+pub mod upscale {
+    use crate::Size;
+    use crate::image::{Id, Upscaler};
+
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Request {
+        pub upscaler: Upscaler,
+        pub size: Size,
+    }
+
+    #[derive(Serialize, Deserialize)]
+    pub struct Response {
+        pub id: Id,
+        pub width: u32,
+        pub height: u32,
     }
 }
