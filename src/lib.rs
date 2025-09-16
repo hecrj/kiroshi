@@ -42,3 +42,5 @@ pub use size::Size;
 pub use stats::Stats;
 pub use steps::Steps;
 pub use upscaler::Upscaler;
+
+pub use bytes::Bytes;

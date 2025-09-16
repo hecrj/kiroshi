@@ -10,17 +10,40 @@ use serde::{Deserialize, Serialize};
 
 use std::fmt;
 use std::io;
+use std::path::{Path, PathBuf};
 
 #[derive(Clone)]
 pub struct Image {
     pub id: Id,
-    pub rgba: Bytes,
     pub size: Size,
-    pub definition: Definition,
+    pub rgba: Bytes,
+    pub path: Option<PathBuf>,
+    pub definition: Option<Definition>,
 }
 
 impl Image {
     pub const DEFAULT_SIZE: Size = Size::new(512, 768);
+
+    pub fn from_file(path: impl AsRef<Path>, size: Size, rgba: Bytes) -> Self {
+        use std::hash::{DefaultHasher, Hash, Hasher};
+
+        let path = path.as_ref();
+
+        let id = {
+            let mut hasher = DefaultHasher::new();
+            path.hash(&mut hasher);
+
+            Id(i64::from_be_bytes(hasher.finish().to_be_bytes()))
+        };
+
+        Self {
+            id,
+            size,
+            rgba,
+            path: Some(path.to_path_buf()),
+            definition: None,
+        }
+    }
 
     pub fn generate(definition: Definition) -> impl Stream<Item = Result<Generation, Error>> {
         crate::stream::from_future(move |mut sender| async move {
@@ -44,7 +67,8 @@ impl Image {
                         id: response.id,
                         rgba,
                         size,
-                        definition: definition.clone(),
+                        path: None,
+                        definition: Some(definition.clone()),
                     }
                 };
 
@@ -78,11 +102,22 @@ impl Image {
         let image = self.clone();
 
         crate::stream::from_future(move |mut sender| async move {
+            let Some(definition) = &image.definition else {
+                let _ = sender
+                    .send(Generation::Finished {
+                        image,
+                        metadata: Vec::new(),
+                    })
+                    .await;
+
+                return Ok(());
+            };
+
             let mut stream = protocol::connect(DETAIL_FACES).await?;
 
             stream
                 .write(detail_faces::Request {
-                    definition: image.definition.clone(),
+                    definition: definition.clone(),
                     detail,
                 })
                 .await?;
@@ -101,7 +136,8 @@ impl Image {
                         id: response.id,
                         rgba,
                         size,
-                        definition: image.definition.clone(),
+                        path: None,
+                        definition: Some(definition.clone()),
                     }
                 };
 
@@ -135,11 +171,22 @@ impl Image {
         let image = self.clone();
 
         crate::stream::from_future(move |mut sender| async move {
+            let Some(definition) = &image.definition else {
+                let _ = sender
+                    .send(Generation::Finished {
+                        image,
+                        metadata: Vec::new(),
+                    })
+                    .await;
+
+                return Ok(());
+            };
+
             let mut stream = protocol::connect(DETAIL_HANDS).await?;
 
             stream
                 .write(detail_hands::Request {
-                    definition: image.definition.clone(),
+                    definition: definition.clone(),
                     detail,
                 })
                 .await?;
@@ -158,7 +205,8 @@ impl Image {
                         id: response.id,
                         rgba,
                         size,
-                        definition: image.definition.clone(),
+                        path: None,
+                        definition: Some(definition.clone()),
                     }
                 };
 
@@ -211,10 +259,11 @@ impl Image {
                 id,
                 rgba: Bytes::from(rgba.to_vec()),
                 size,
-                definition: Definition {
-                    size,
-                    ..image.definition
-                },
+                path: image.path,
+                definition: image
+                    .definition
+                    .clone()
+                    .map(|definition| Definition { size, ..definition }),
             })
         }
     }
