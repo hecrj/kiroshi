@@ -28,7 +28,7 @@ class Recipe:
             pag = Pag.from_dict(pag)
 
         return Recipe(
-            model=f"/models/{data['model']}.safetensors",
+            model=f"/models/image/{data['model']}.safetensors",
             prompt=data["prompt"],
             seed=data["seed"],
             size=Size.from_dict(data["size"]),

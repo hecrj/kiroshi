@@ -1,6 +1,9 @@
 import PIL.Image
 
+from dataclasses import dataclass
 
+
+@dataclass
 class Image:
     raw: PIL.Image.Image
     hash: int

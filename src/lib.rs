@@ -15,11 +15,11 @@ mod strength;
 pub mod detail;
 pub mod image;
 pub mod lora;
-pub mod model;
 pub mod pag;
 pub mod protocol;
 pub mod stats;
 pub mod upscaler;
+pub mod video;
 
 pub use detail::Detail;
 pub use error::Error;
@@ -29,7 +29,6 @@ pub use strength::Strength;
 pub mod server;
 pub use guidance::Guidance;
 pub use inpaint::Inpaint;
-pub use model::Model;
 pub use padding::Padding;
 pub use pag::Pag;
 pub use precision::Precision;
@@ -42,5 +41,6 @@ pub use size::Size;
 pub use stats::Stats;
 pub use steps::Steps;
 pub use upscaler::Upscaler;
+pub use video::Video;
 
 pub use bytes::Bytes;

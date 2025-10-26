@@ -9,6 +9,7 @@ dependencies = [
     "adetailer",
     "compel>=2.1.1",
     "diffusers>=0.35.1",
+    "ftfy>=6.3.1",
     "numpy>=2.3.1",
     "pillow>=11.3.0",
     "realesrgan",
@@ -20,3 +21,4 @@ dependencies = [
 [tool.uv.sources]
 realesrgan = { git = "https://github.com/hecrj/RealESRGAN.git", rev = "195df05862c92a3ad3497bcab8bbb4cef366d3af" }
 adetailer = { git = "https://github.com/hecrj/adetailer.git", rev = "25e7509fe018de8aa063a5f1902598f5eda0c06c" }
+diffusers = { git = "https://github.com/hecrj/diffusers.git", rev = "a945347695954d30d8fd9ce638823bbaa95e34b4" }

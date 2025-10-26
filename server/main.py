@@ -1,4 +1,7 @@
 import image
+import video
+
+from video import Video
 
 import asyncio
 import json
@@ -52,6 +55,12 @@ async def instance(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
 
             await run(image.upscale, writer, message, upscaler, input)
 
+        case "generate_video":
+            recipe = video.Recipe.from_dict(message)
+            first_frame = await read_image(reader, writer, recipe.size)
+
+            await run(video.generate, writer, message, recipe, first_frame)
+
         case task:
             print(f"unknown task: {task}")
             pass
@@ -95,6 +104,8 @@ async def read_image(
 
 async def run(f, writer, message, *args):
     global cache
+
+    should_cache = message.get("cache", True)
 
     h = hash(tuple(args))
     result = cache.get(h)
@@ -140,29 +151,63 @@ async def run(f, writer, message, *args):
         print(f"Metadata: {metadata}")
 
         result = [image, metadata]
-        cache[h] = result
 
-    image, metadata = result
+        if should_cache:
+            cache[h] = result
 
-    start = time.time()
-    image = image.copy()
-    image.putalpha(255)
-    print(f"Added alpha layer: {time.time() - start}s")
+    output, metadata = result
 
-    start = time.time()
-    await send_json(
-        writer,
-        {
-            "id": h,
-            "width": image.width,
-            "height": image.height,
-            "progress": 1.0,
-            "is_final": True,
-            **metadata,
-        },
-    )
-    await send(writer, image.tobytes())
-    print(f"Sent: {time.time() - start}s")
+    if isinstance(output, PIL.Image.Image):
+        image = output
+
+        start = time.time()
+        image = image.copy()
+        image.putalpha(255)
+        print(f"Added alpha layer: {time.time() - start}s")
+
+        start = time.time()
+        await send_json(
+            writer,
+            {
+                "id": h,
+                "width": image.width,
+                "height": image.height,
+                "progress": 1.0,
+                "is_final": True,
+                **metadata,
+            },
+        )
+        await send(writer, image.tobytes())
+        print(f"Sent: {time.time() - start}s")
+
+    elif isinstance(output, Video):
+        video = output
+
+        await send_json(
+            writer,
+            {
+                "id": h,
+                "width": video.width,
+                "height": video.height,
+                "framerate": video.framerate,
+                "frames": [frame.hash for frame in video.frames],
+                **metadata,
+            },
+        )
+
+        start = time.time()
+
+        for frame in video.frames:
+            if should_cache:
+                cache[frame.hash] = [frame.raw, {}]
+
+            image = frame.raw
+            image = image.copy()
+            image.putalpha(255)
+
+            await send(writer, image.tobytes())
+
+        print(f"Sent: {time.time() - start}s")
 
     writer.close()
     await writer.wait_closed()

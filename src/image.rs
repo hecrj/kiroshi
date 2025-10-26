@@ -1,8 +1,8 @@
 use crate::protocol;
 use crate::stream::{SinkExt, Stream};
 use crate::{
-    Detail, Error, Guidance, Lora, Model, Pag, Precision, Quality, Rectangle, Sampler, Seed, Size,
-    Steps, Upscaler,
+    Detail, Error, Guidance, Lora, Pag, Precision, Quality, Rectangle, Sampler, Seed, Size, Steps,
+    Upscaler,
 };
 
 use bytes::Bytes;
@@ -236,6 +236,7 @@ impl Image {
     pub fn upscale<'a>(
         &self,
         upscaler: Upscaler,
+        cache: Cache,
     ) -> impl Future<Output = Result<Image, Error>> + 'a {
         let image = self.clone();
 
@@ -245,6 +246,7 @@ impl Image {
             stream
                 .write(upscale::Request {
                     upscaler,
+                    cache,
                     size: image.size,
                 })
                 .await?;
@@ -268,7 +270,7 @@ impl Image {
         }
     }
 
-    async fn send<I, O>(&self, stream: &mut plug::Connection<I, O>) -> io::Result<()>
+    pub(crate) async fn send<I, O>(&self, stream: &mut plug::Connection<I, O>) -> io::Result<()>
     where
         I: Serialize,
     {
@@ -292,6 +294,28 @@ impl fmt::Debug for Image {
             .field("size", &self.size)
             .field("definition", &self.definition)
             .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct Model {
+    pub name: String,
+}
+
+impl Model {
+    pub async fn list() -> Result<Vec<Self>, Error> {
+        let mut stream = protocol::connect(LIST_MODELS).await?;
+
+        Ok(stream.read().await?)
+    }
+}
+
+pub const LIST_MODELS: protocol::Plug<protocol::Never, Vec<Model>> =
+    protocol::Plug::new("list_image_models");
+
+impl fmt::Display for Model {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.name)
     }
 }
 
@@ -414,7 +438,7 @@ pub const UPSCALE: protocol::Plug<upscale::Request, upscale::Response> =
 
 pub mod upscale {
     use crate::Size;
-    use crate::image::{Id, Upscaler};
+    use crate::image::{Cache, Id, Upscaler};
 
     use serde::{Deserialize, Serialize};
 
@@ -422,6 +446,7 @@ pub mod upscale {
     pub struct Request {
         pub upscaler: Upscaler,
         pub size: Size,
+        pub cache: Cache,
     }
 
     #[derive(Serialize, Deserialize)]
@@ -430,4 +455,10 @@ pub mod upscale {
         pub width: u32,
         pub height: u32,
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Cache {
+    Enabled,
+    Disabled,
 }

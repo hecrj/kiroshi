@@ -57,6 +57,19 @@ class Pipe:
         finally:
             semaphore.release()
 
+    def clear():
+        global semaphore, pipe
+        semaphore.acquire()
+
+        try:
+            pipe = None
+
+            gc.collect()
+            torch.cuda.empty_cache()
+
+        finally:
+            semaphore.release()
+
     def __init__(
         self,
         model: str,

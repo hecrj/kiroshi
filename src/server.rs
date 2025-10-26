@@ -18,12 +18,28 @@ pub struct Server {
 struct Container(String);
 
 impl Server {
-    pub async fn run(models_dir: impl AsRef<Path>) -> Result<Server, Error> {
-        let models = {
-            let models_dir = models_dir.as_ref();
-            fs::create_dir_all(&models_dir).await?;
+    pub async fn run(
+        image_models_dir: impl AsRef<Path>,
+        video_models_dir: impl AsRef<Path>,
+    ) -> Result<Server, Error> {
+        let image_models = {
+            let image_models_dir = image_models_dir.as_ref();
+            fs::create_dir_all(&image_models_dir).await?;
 
-            format!("{host}:/models", host = models_dir.to_string_lossy())
+            format!(
+                "{host}:/models/image",
+                host = image_models_dir.to_string_lossy()
+            )
+        };
+
+        let video_models = {
+            let video_models_dir = video_models_dir.as_ref();
+            fs::create_dir_all(&video_models_dir).await?;
+
+            format!(
+                "{host}:/models/video",
+                host = video_models_dir.to_string_lossy()
+            )
         };
 
         let mut process = process::Command::new("docker")
@@ -31,7 +47,8 @@ impl Server {
             .args(["-t", "--rm"])
             .args(["--gpus", "all"])
             .args(["-p", "9149:9149"])
-            .args(["-v", &models])
+            .args(["-v", &image_models])
+            .args(["-v", &video_models])
             .arg("ghcr.io/hecrj/kiroshi/server:latest")
             .stdout(std::process::Stdio::piped())
             .stdin(std::process::Stdio::null())
