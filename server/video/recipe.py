@@ -9,7 +9,7 @@ class Recipe:
     seed: int
     prompt: str
     size: Size
-    frames: int
+    duration: int
     max_area: int = 720 * 1280
     negative_prompt: str = ""
     precision: Precision = Precision.BFLOAT16
@@ -22,7 +22,7 @@ class Recipe:
             seed=data["seed"],
             prompt=data["prompt"],
             size=Size.from_dict(data["size"]),
-            frames=data["frames"],
+            duration=data["duration"],
             max_area=data["max_area"],
             negative_prompt=data["negative_prompt"],
             precision=Precision.parse(data["precision"]),

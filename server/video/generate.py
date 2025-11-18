@@ -33,6 +33,7 @@ def generate(
 
         image = first_frame.raw.resize((width, height))
         generator = torch.Generator(device="cuda").manual_seed(recipe.seed)
+        framerate = 16
 
         frames = pipe.generate(
             image=image,
@@ -40,7 +41,7 @@ def generate(
             negative_prompt=recipe.negative_prompt,
             width=width,
             height=height,
-            num_frames=recipe.frames,
+            num_frames=recipe.duration * framerate + 1,
             guidance_scale=recipe.guidance,
             num_inference_steps=recipe.steps,
             generator=generator,
@@ -52,4 +53,4 @@ def generate(
             for i, frame in enumerate(frames)
         ]
 
-        return Video(width, height, framerate=16, frames=frames)
+        return Video(width, height, framerate=framerate, frames=frames)

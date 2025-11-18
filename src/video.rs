@@ -1,5 +1,5 @@
 use crate::protocol;
-use crate::{Bytes, Error, Guidance, Image, Precision, Seed, Size, Steps};
+use crate::{Bytes, Duration, Error, Guidance, Image, Precision, Seed, Size, Steps};
 
 use serde::{Deserialize, Serialize};
 
@@ -98,7 +98,7 @@ pub struct Definition {
     pub seed: Seed,
     pub steps: Steps,
     pub guidance: Guidance,
-    pub frames: u32,
+    pub duration: Duration,
 }
 
 pub const GENERATE: protocol::Plug<generate::Request, generate::Response> =

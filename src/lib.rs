@@ -1,3 +1,4 @@
+mod duration;
 mod error;
 mod guidance;
 mod inpaint;
@@ -22,6 +23,7 @@ pub mod upscaler;
 pub mod video;
 
 pub use detail::Detail;
+pub use duration::Duration;
 pub use error::Error;
 pub use image::Image;
 pub use lora::Lora;

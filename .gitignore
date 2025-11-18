@@ -1,3 +1,4 @@
 /target
+*.pth
 *.pth.lock
 __pycache__

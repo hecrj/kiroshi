@@ -1,7 +1,7 @@
 use kiroshi::protocol;
 use kiroshi::video;
 use kiroshi::video::{Definition, Model};
-use kiroshi::{Guidance, Size, Steps};
+use kiroshi::{Duration, Guidance, Size, Steps};
 
 use serde::Serialize;
 use tokio::fs;
@@ -74,7 +74,7 @@ struct Recipe {
     max_area: u32,
     steps: Steps,
     guidance: Guidance,
-    frames: u32,
+    duration: Duration,
 }
 
 impl From<Definition> for Recipe {
@@ -89,7 +89,7 @@ impl From<Definition> for Recipe {
             max_area: definition.max_area,
             steps: definition.steps,
             guidance: definition.guidance,
-            frames: definition.frames,
+            duration: definition.duration,
         }
     }
 }
