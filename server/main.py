@@ -107,7 +107,7 @@ async def run(f, writer, message, *args):
 
     should_cache = message.get("cache", True)
 
-    h = hash(tuple(args))
+    h = hash((f, tuple(args)))
     result = cache.get(h)
 
     if result is None:
