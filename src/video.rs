@@ -17,7 +17,11 @@ pub struct Video {
 }
 
 impl Video {
-    pub async fn generate(definition: Definition, first_frame: Image) -> Result<Self, Error> {
+    pub async fn generate(
+        definition: Definition,
+        first_frame: Image,
+        last_frame: Option<Image>,
+    ) -> Result<Self, Error> {
         let mut stream = protocol::connect(GENERATE).await?;
 
         stream
@@ -27,6 +31,13 @@ impl Video {
             .await?;
 
         first_frame.send(&mut stream).await?;
+
+        if let Some(last_frame) = last_frame {
+            stream.write_bytes(&[1]).await?;
+            last_frame.send(&mut stream).await?;
+        } else {
+            stream.write_bytes(&[0]).await?;
+        }
 
         let generate::Response {
             id,

@@ -15,6 +15,7 @@ from .video import Video
 def generate(
     recipe: Recipe,
     first_frame: Image,
+    last_frame: Image | None,
     on_progress: Callable[[float, PIL.Image.Image], None] | None = None,
 ) -> Video:
     ImagePipe.clear()
@@ -37,6 +38,7 @@ def generate(
 
         frames = pipe.generate(
             image=image,
+            last_image=last_frame,
             prompt=recipe.prompt,
             negative_prompt=recipe.negative_prompt,
             width=width,

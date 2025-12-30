@@ -58,8 +58,12 @@ async def instance(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         case "generate_video":
             recipe = video.Recipe.from_dict(message)
             first_frame = await read_image(reader, writer, recipe.size)
+            last_frame = None
 
-            await run(video.generate, writer, message, recipe, first_frame)
+            if await read(reader) == bytes([1]):
+                last_frame = await read_image(reader, writer, recipe.size)
+
+            await run(video.generate, writer, message, recipe, first_frame, last_frame)
 
         case task:
             print(f"unknown task: {task}")
