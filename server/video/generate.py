@@ -32,13 +32,17 @@ def generate(
         width = round(np.sqrt(recipe.max_area / aspect_ratio)) // mod_value * mod_value
         height = round(np.sqrt(recipe.max_area * aspect_ratio)) // mod_value * mod_value
 
-        image = first_frame.raw.resize((width, height))
-        generator = torch.Generator(device="cuda").manual_seed(recipe.seed)
         framerate = 16
+        generator = torch.Generator(device="cuda").manual_seed(recipe.seed)
+        image = first_frame.raw.resize((width, height))
+        last_image = None
+
+        if last_frame is not None:
+            last_image = last_frame.raw.resize((width, height))
 
         frames = pipe.generate(
             image=image,
-            last_image=last_frame,
+            last_image=last_image,
             prompt=recipe.prompt,
             negative_prompt=recipe.negative_prompt,
             width=width,
