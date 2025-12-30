@@ -47,7 +47,7 @@ class Pipe:
                     recipe.model,
                     recipe.precision,
                     recipe.sampler,
-                    recipe.pag,
+                    recipe.pag is not None,
                     recipe.loras,
                     cpu,
                 )
