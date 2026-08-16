@@ -32,9 +32,9 @@ impl fmt::Display for Scale {
     }
 }
 
-impl From<u8> for Scale {
-    fn from(value: u8) -> Self {
-        Self(f64::from(value))
+impl From<f64> for Scale {
+    fn from(value: f64) -> Self {
+        Self(value)
     }
 }
 
@@ -51,5 +51,11 @@ impl num_traits::FromPrimitive for Scale {
 
     fn from_u64(n: u64) -> Option<Self> {
         Some(Self(n as f64))
+    }
+}
+
+impl num_traits::AsPrimitive<f64> for Scale {
+    fn as_(self) -> f64 {
+        self.0
     }
 }

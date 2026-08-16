@@ -56,21 +56,9 @@ impl fmt::Display for TileSize {
     }
 }
 
-impl From<u8> for TileSize {
-    fn from(value: u8) -> Self {
-        Self(u32::from(value))
-    }
-}
-
-impl From<TileSize> for f64 {
-    fn from(value: TileSize) -> Self {
-        f64::from(value.0)
-    }
-}
-
-impl From<TileSize> for f32 {
-    fn from(value: TileSize) -> Self {
-        value.0 as f32
+impl From<u32> for TileSize {
+    fn from(value: u32) -> Self {
+        Self(value)
     }
 }
 
@@ -81,5 +69,11 @@ impl num_traits::FromPrimitive for TileSize {
 
     fn from_u64(n: u64) -> Option<Self> {
         u32::try_from(n).ok().map(Self)
+    }
+}
+
+impl num_traits::AsPrimitive<f64> for TileSize {
+    fn as_(self) -> f64 {
+        f64::from(self.0)
     }
 }

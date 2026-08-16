@@ -11,9 +11,9 @@ impl fmt::Display for Steps {
     }
 }
 
-impl From<u8> for Steps {
-    fn from(value: u8) -> Self {
-        Self(u32::from(value))
+impl From<u32> for Steps {
+    fn from(value: u32) -> Self {
+        Self(value)
     }
 }
 
@@ -30,5 +30,11 @@ impl num_traits::FromPrimitive for Steps {
 
     fn from_u64(n: u64) -> Option<Self> {
         u32::try_from(n).map(Self).ok()
+    }
+}
+
+impl num_traits::AsPrimitive<f64> for Steps {
+    fn as_(self) -> f64 {
+        f64::from(self.0)
     }
 }

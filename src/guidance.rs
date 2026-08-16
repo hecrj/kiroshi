@@ -22,15 +22,9 @@ impl fmt::Display for Guidance {
     }
 }
 
-impl From<u8> for Guidance {
-    fn from(value: u8) -> Self {
-        Self(f64::from(value))
-    }
-}
-
-impl From<Guidance> for f64 {
-    fn from(value: Guidance) -> Self {
-        value.0
+impl From<f64> for Guidance {
+    fn from(value: f64) -> Self {
+        Self(value)
     }
 }
 
@@ -41,5 +35,11 @@ impl num_traits::FromPrimitive for Guidance {
 
     fn from_u64(n: u64) -> Option<Self> {
         Some(Self(n as f64))
+    }
+}
+
+impl num_traits::AsPrimitive<f64> for Guidance {
+    fn as_(self) -> f64 {
+        self.0
     }
 }
