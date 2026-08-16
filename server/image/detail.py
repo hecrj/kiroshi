@@ -5,7 +5,6 @@ from .latent import notify
 from .image import Image
 from .rectangle import Rectangle
 
-from multiprocessing import Process, Queue
 from dataclasses import dataclass
 import torch
 import gc
@@ -26,28 +25,6 @@ class Detail:
             padding=detail["padding"],
             max_area=detail.get("max_area"),
         )
-
-
-def adetailer(input, output):
-    while True:
-        try:
-            (model, image) = input.get()
-        except:
-            return
-
-        from adetailer import ultralytics_predict
-
-        prediction = ultralytics_predict(
-            model,
-            image,
-            confidence=0.1,
-        )
-        output.put(prediction)
-
-
-AdetailerInput = Queue()
-AdetailerOutput = Queue()
-Process(target=adetailer, args=(AdetailerInput, AdetailerOutput)).start()
 
 
 def detail_faces(
@@ -103,6 +80,7 @@ def increase_detail(
     on_progress=None,
 ) -> tuple[PIL.Image.Image, list[dict]]:
     from adetailer.mask import mask_preprocess, bbox_area
+    from adetailer import ultralytics_predict
 
     global initialized
 
@@ -111,11 +89,13 @@ def increase_detail(
         torch.cuda.empty_cache()
         initialized = True
 
-    AdetailerInput.put((model, image))
-
     prompt = Prompt(pipe.compel, recipe.prompt, recipe.negative_prompt)
     generator = torch.Generator(device="cuda").manual_seed(recipe.seed)
-    prediction = AdetailerOutput.get()
+    prediction = ultralytics_predict(
+        model,
+        image,
+        confidence=0.1,
+    )
 
     if not (prediction.masks):
         return (image, [])

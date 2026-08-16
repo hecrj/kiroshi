@@ -3,25 +3,25 @@ name = "kiroshi"
 version = "0.1.0"
 description = "An opinionated image diffusion server"
 readme = "README.md"
-requires-python = "==3.11.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
-    "accelerate>=1.10.1",
+    "accelerate>=1.14.0",
     "adetailer",
     "compel>=2.1.1",
-    "diffusers>=0.35.1",
+    "diffusers>=0.39.0",
     "ftfy>=6.3.1",
-    "numpy>=2.3.1",
-    "pillow>=11.3.0",
+    "numpy>=2.5.1",
+    "pillow>=12.3.0",
     "realesrgan",
-    "torch>=2.8.0",
-    "torchvision>=0.23.0",
-    "transformers>=4.56.1",
+    "torch>=2.13.0",
+    "torchvision>=0.28.0",
+    "transformers>=5.15.0",
 ]
 
 [tool.uv.sources]
 realesrgan = { git = "https://github.com/hecrj/RealESRGAN.git", rev = "195df05862c92a3ad3497bcab8bbb4cef366d3af" }
 adetailer = { git = "https://github.com/hecrj/adetailer.git", rev = "25e7509fe018de8aa063a5f1902598f5eda0c06c" }
-diffusers = { git = "https://github.com/hecrj/diffusers.git", rev = "a945347695954d30d8fd9ce638823bbaa95e34b4" }
+# diffusers = { git = "https://github.com/hecrj/diffusers.git", rev = "a945347695954d30d8fd9ce638823bbaa95e34b4" }
 
 [tool.uv.extra-build-dependencies]
 realesrgan = ["setuptools==80.10.2"]
