@@ -5,17 +5,17 @@ description = "An opinionated image diffusion server"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "accelerate>=1.14.0",
+    "accelerate>=1.15.0",
     "adetailer",
-    "compel>=2.1.1",
-    "diffusers>=0.39.0",
+    "compel>=2.5.1",
+    "diffusers>=0.41.0",
     "ftfy>=6.3.1",
-    "numpy>=2.5.1",
+    "numpy>=2.5.4",
     "pillow>=12.3.0",
     "realesrgan",
-    "torch>=2.13.0",
-    "torchvision>=0.28.0",
-    "transformers>=5.15.0",
+    "torch>=2.14.1",
+    "torchvision>=0.29.1",
+    "transformers>=5.19.0",
 ]
 
 [tool.uv.sources]
