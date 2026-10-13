@@ -490,7 +490,7 @@ requires-dist = [
     { name = "ftfy", specifier = ">=6.3.1" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "pillow", specifier = ">=12.3.0" },
-    { name = "realesrgan", git = "https://github.com/hecrj/RealESRGAN.git?rev=195df05862c92a3ad3497bcab8bbb4cef366d3af" },
+    { name = "realesrgan", git = "https://github.com/hecrj/RealESRGAN.git?rev=8bf30248f1acccb0808378a00d08c3ba3d473180" },
     { name = "torch", specifier = ">=2.14.1" },
     { name = "torchvision", specifier = ">=0.29.1" },
     { name = "transformers", specifier = ">=5.19.0" },
@@ -1024,7 +1024,7 @@ wheels = [
 [[package]]
 name = "realesrgan"
 version = "1.0"
-source = { git = "https://github.com/hecrj/RealESRGAN.git?rev=195df05862c92a3ad3497bcab8bbb4cef366d3af#195df05862c92a3ad3497bcab8bbb4cef366d3af" }
+source = { git = "https://github.com/hecrj/RealESRGAN.git?rev=8bf30248f1acccb0808378a00d08c3ba3d473180#8bf30248f1acccb0808378a00d08c3ba3d473180" }
 dependencies = [
     { name = "numpy" },
     { name = "opencv-python" },
