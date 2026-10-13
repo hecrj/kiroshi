@@ -11,7 +11,7 @@ COPY server/Cargo.toml /kiroshi/server/.
 
 RUN cargo build --release --package kiroshi-server
 
-FROM nvidia/cuda:12.9.1-runtime-ubuntu22.04
+FROM nvidia/cuda:13.4.2-runtime-ubuntu24.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ENV PATH="$PATH:/root/.local/bin"
