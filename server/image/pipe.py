@@ -4,7 +4,7 @@ from .recipe import Recipe
 from .lora import Lora
 
 from typing import Any, Iterator
-from compel import Compel, ReturnedEmbeddingsType
+from compel import Compel, CompelForSDXL
 from contextlib import contextmanager
 
 import torch
@@ -25,7 +25,7 @@ class Pipe:
     loras: tuple[Lora]
     generate: Any
     inpaint: Any
-    compel: Compel
+    compel: "Compel | CompelForSDXL"
 
     @contextmanager
     def acquire(recipe: Recipe, cpu: bool = False) -> Iterator["Pipe"]:
@@ -132,13 +132,7 @@ class Pipe:
             self.generate.enable_model_cpu_offload()
 
         if hasattr(self.generate, "tokenizer_2"):
-            self.compel = Compel(
-                tokenizer=[self.generate.tokenizer, self.generate.tokenizer_2],
-                text_encoder=[self.generate.text_encoder, self.generate.text_encoder_2],
-                returned_embeddings_type=ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NON_NORMALIZED,
-                requires_pooled=[False, True],
-                truncate_long_prompts=False,
-            )
+            self.compel = CompelForSDXL(self.generate)
         else:
             self.compel = Compel(
                 tokenizer=self.generate.tokenizer,

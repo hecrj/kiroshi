@@ -5,13 +5,39 @@ from video import Video
 
 import asyncio
 import json
+import logging
 import time
 import torch
 import gc
 import multiprocessing
 import signal
+import warnings
 import PIL.Image
 import PIL.ImageFilter
+
+# torch 2.14+ deprecates `torch.jit.script`. transformers (imported
+# transitively by diffusers' auto_pipeline -> audioldm2 -> VITS) still
+# applies `@torch.jit.script` at import time, so silence that one-off
+# FutureWarning.
+warnings.filterwarnings(
+    "ignore",
+    category=FutureWarning,
+    module=r"torch\.jit\._script",
+)
+
+
+# diffusers 0.41.0's ModelMixin.to() warns on any dtype cast even when no
+# modules need to be kept in float32 (the printed list is `[]`). This false
+# positive fires for every model component on single-file pipeline loads,
+# so silence just that message.
+class _IgnoreFp32CastWarning(logging.Filter):
+    def filter(self, record):
+        return "should be kept in float32" not in record.getMessage()
+
+
+logging.getLogger("diffusers.models.modeling_utils").addFilter(
+    _IgnoreFp32CastWarning()
+)
 
 
 async def server():
