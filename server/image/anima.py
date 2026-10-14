@@ -27,6 +27,7 @@ import json
 import math
 import re
 import struct
+import time
 from pathlib import Path
 
 import PIL.Image
@@ -652,6 +653,10 @@ def load_anima_pipeline(
             "WITH_ANIMA=1 or clone hecrj/anima into templates/anima."
         )
 
+    size = Path(single_file).stat().st_size
+    print(f"Loading Anima model: {Path(single_file).name} ({size / 2**30:.1f} GiB)")
+    start = time.time()
+
     header = _header(single_file)
     if any(key.endswith(".comfy_quant") for key in header if key != "__metadata__"):
         raise ValueError("Quantized Anima checkpoints are not supported")
@@ -659,6 +664,7 @@ def load_anima_pipeline(
     prefix = next(p for p in _ANIMA_PREFIXES if any(key.startswith(p) for key in header if key != "__metadata__"))
 
     state = list(safetensors.torch.load_file(single_file).items())
+    print(f"  checkpoint loaded: {time.time() - start:.1f}s")
     adapter = {
         key.removeprefix(prefix + "llm_adapter."): value
         for key, value in state
@@ -704,6 +710,7 @@ def load_anima_pipeline(
             f"unexpected {sorted(unexpected)[:5]}"
         )
     conditioner.load_state_dict(adapter, assign=True)
+    print(f"  transformer + adapter built: {time.time() - start:.1f}s")
 
     # -- Reference components
     vae = AutoencoderKLQwenImage.from_pretrained(
@@ -714,6 +721,7 @@ def load_anima_pipeline(
     )
     tokenizer = Qwen2Tokenizer.from_pretrained(config_dir, subfolder="tokenizer", local_files_only=True)
     t5_tokenizer = T5TokenizerFast.from_pretrained(config_dir, subfolder="t5_tokenizer", local_files_only=True)
+    print(f"Anima model ready: {time.time() - start:.1f}s")
 
     return AnimaPipeline(
         transformer=transformer,

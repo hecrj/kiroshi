@@ -121,7 +121,9 @@ class Pipe:
                     self.generate, enable_pag=True, pag_applied_layers=["mid"]
                 )
 
+        start = time.time()
         self.generate = self.generate.to("cuda")
+        print(f"Model on GPU: {time.time() - start}s")
         if hasattr(self.generate, "safety_checker"):
             self.generate.safety_checker = None
 

@@ -7,3 +7,4 @@ target/
 # server/templates/; the Docker build clones them itself, so exclude them
 # from the build context.
 server/templates/
+.git/
