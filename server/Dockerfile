@@ -65,7 +65,7 @@ RUN if [ "$WITH_KREA2" = "1" ]; then \
     git clone --depth 1 https://huggingface.co/hecrj/krea-2 templates/krea-2; \
 fi
 
-# Anima 1.0 reference components: the full reference dir (Qwen3-0.6B text
+# Anima reference components: the full reference dir (Qwen3-0.6B text
 # encoder, Qwen-Image VAE, Qwen/T5 tokenizers) is the hecrj/anima git
 # repository (tracked as the server/templates/anima submodule, with the
 # safetensors via Git LFS). It is cloned only when built with

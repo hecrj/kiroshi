@@ -1,6 +1,6 @@
-"""Anima 1.0 (``circlestone-labs/Anima``) single-file support.
+"""Anima (``circlestone-labs/Anima``) single-file support.
 
-Anima is a Cosmos-Predict2-based text-to-image model: a 2B DiT with the
+Anima is a Cosmos-Predict2-based text-to-image model: a DiT with the
 ComfyUI ``net.`` key layout plus an "LLM adapter" (``llm_adapter.*``) that
 cross-attends learned T5 token embeddings over Qwen3-0.6B hidden states.
 The single-file checkpoints contain exactly those two parts; the Qwen3-0.6B
@@ -19,8 +19,9 @@ sigma-domain samplers and the diffusers Anima pipeline):
 - classifier-free guidance is ``uncond + guidance * (cond - uncond)``;
 - VAE decoding applies ``latents * latents_std + latents_mean``.
 
-Only Anima 1.0-generation (2B, 28-block) checkpoints are supported. The
-expanded-layer "29B" fine-tunes (40 blocks) are rejected with a clear error.
+Both Anima generations are supported: the 1.0-generation 2B DiT (28
+blocks) and the expanded-layer 2.9B fine-tunes (40-block DiT, same width,
+same LLM adapter); the block count is derived from the checkpoint.
 """
 
 import json
@@ -68,11 +69,11 @@ _ANIMA_PREFIXES = ("net.", "model.diffusion_model.")
 _SIGMA_SHIFT = 3.0
 _SIGMA_GRID = 1000
 
-#: Anima 1.0-generation architecture (2B). Anything else is an
-#: expanded-layer fine-tune and out of scope.
+#: Anima architecture (shared by the 1.0-generation 2B and the
+#: expanded-layer 2.9B fine-tunes; the block count is derived from the
+#: checkpoint).
 _ANIMA_MODEL_CHANNELS = 2048
 _ANIMA_HEAD_DIM = 128
-_ANIMA_NUM_LAYERS = 28
 
 
 def _timestep_start(steps: int, strength: float) -> int:
@@ -415,7 +416,7 @@ class AnimaOutput(BaseOutput):
 
 
 class AnimaPipeline(DiffusionPipeline, AnimaLoraLoaderMixin):
-    """Anima 1.0 text-to-image pipeline (with native inpainting).
+    """Anima text-to-image pipeline (with native inpainting).
 
     Built from a single-file Anima checkpoint (DiT + LLM adapter) plus the
     ``anima-1.0`` reference components. The denoising loop is implemented
@@ -771,9 +772,8 @@ def _transformer_config(state: dict) -> dict:
     if model_channels != _ANIMA_MODEL_CHANNELS:
         raise ValueError(
             f"Unsupported Anima checkpoint: {model_channels} model channels "
-            f"({x_proj.shape}). Only the 1.0-generation 2B architecture "
-            f"({_ANIMA_MODEL_CHANNELS}) is supported; expanded-layer fine-tunes "
-            "are out of scope."
+            f"({x_proj.shape}). Only the {_ANIMA_MODEL_CHANNELS}-channel "
+            "architecture is supported."
         )
 
     q_norm = state["blocks.0.self_attn.q_norm.weight"]
@@ -783,14 +783,10 @@ def _transformer_config(state: dict) -> dict:
     out_channels = state["final_layer.linear.weight"].shape[0] // 4
     adaln_lora_dim = state["blocks.0.adaln_modulation_self_attn.1.weight"].shape[0]
     text_embed_dim = state["blocks.0.cross_attn.k_proj.weight"].shape[1]
+    # 28 blocks for the 1.0-generation 2B, 40 for the expanded-layer 2.9B
+    # fine-tunes; the block count and per-tensor shapes are validated
+    # against the constructed model below.
     num_layers = _block_count(state, "")
-
-    if num_layers != _ANIMA_NUM_LAYERS:
-        raise ValueError(
-            f"Unsupported Anima checkpoint: {num_layers} transformer blocks. Only the "
-            f"1.0-generation {_ANIMA_NUM_LAYERS}-block architecture is supported; "
-            "expanded-layer (\"29B\") fine-tunes are out of scope."
-        )
 
     # NTK RoPE factors per in_channels (ComfyUI `supported_models.Anima`
     # detection): (t, h, w).
@@ -839,10 +835,12 @@ def load_anima_pipeline(
     config_dir: str = "templates/anima",
     lora: bool = False,
 ) -> AnimaPipeline:
-    """Load an Anima 1.0 pipeline from a transformer-only single file.
+    """Load an Anima pipeline from a transformer-only single file.
 
-    The single file contains the DiT and the LLM adapter (ComfyUI key
-    layout); the Qwen3-0.6B text encoder, tokenizers and VAE come from the
+    Supports both the 1.0-generation 2B (28-block DiT) and the
+    expanded-layer 2.9B fine-tunes (40-block DiT). The single file
+    contains the DiT and the LLM adapter (ComfyUI key layout); the
+    Qwen3-0.6B text encoder, tokenizers and VAE come from the
     ``templates/anima`` reference dir (the hecrj/anima submodule).
     """
     from accelerate import init_empty_weights

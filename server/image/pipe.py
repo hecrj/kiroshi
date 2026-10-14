@@ -103,7 +103,7 @@ class Pipe:
             # submodule.
             self.generate = load_krea2_pipeline(model, precision.dtype(), lora=bool(loras))
         elif is_anima_file(model):
-            # Anima 1.0: DiT + LLM adapter in one single file; Qwen3-0.6B
+            # Anima: DiT + LLM adapter in one single file; Qwen3-0.6B
             # text encoder, tokenizers and VAE come from the `templates/anima`
             # submodule.
             self.generate = load_anima_pipeline(model, precision.dtype(), lora=bool(loras))
