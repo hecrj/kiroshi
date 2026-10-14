@@ -6,6 +6,8 @@ from .image import Image
 from .rectangle import Rectangle
 from .anima import AnimaPipeline, inpaint_steps
 
+from diffusers.image_processor import VaeImageProcessor
+
 from dataclasses import dataclass
 import torch
 import gc
@@ -129,19 +131,33 @@ def increase_detail(
         if is_anima:
             # Anima native inpainting: the white region is regenerated
             # through a strength-fraction of the schedule while the rest
-            # of the image is preserved exactly. The detection blob is
-            # dilated by the padding (like the crop padding of the SDXL
-            # path) and feathered before it drives the regeneration.
+            # of the image is preserved exactly. Like the SDXL
+            # `padding_mask_crop`, the masked area is cropped with
+            # `detail.padding` of context and both the crop and its mask
+            # are upscaled to the processing resolution before the
+            # generation, so the region is generated at a higher
+            # resolution than it occupied in the image; the result is
+            # then overlaid back on the original image.
             strength = detail.strength / 100.0
-
-            if detail.padding > 0:
-                mask = mask.filter(PIL.ImageFilter.MaxFilter(2 * detail.padding + 1))
 
             mask = mask.filter(PIL.ImageFilter.GaussianBlur(4))
 
-            image = pipe.generate(
-                image=image,
-                mask=mask,
+            crops_coords = VaeImageProcessor.get_crop_region(
+                mask,
+                recipe.size.width,
+                recipe.size.height,
+                pad=detail.padding,
+            )
+
+            generated = pipe.generate(
+                image=image.crop(crops_coords).resize(
+                    (recipe.size.width, recipe.size.height),
+                    PIL.Image.Resampling.BILINEAR,
+                ),
+                mask=mask.crop(crops_coords).resize(
+                    (recipe.size.width, recipe.size.height),
+                    PIL.Image.Resampling.BILINEAR,
+                ),
                 strength=strength,
                 num_inference_steps=recipe.steps,
                 guidance_scale=recipe.guidance,
@@ -156,6 +172,10 @@ def increase_detail(
                 ),
                 callback_on_step_end_tensor_inputs=["latents"],
             ).images[0]
+
+            image = pipe.generate.image_processor.apply_overlay(
+                mask, image, generated, crops_coords
+            )
         else:
             mask = pipe.inpaint.mask_processor.blur(mask, blur_factor=4)
 
