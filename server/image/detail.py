@@ -4,11 +4,13 @@ from .prompt import Prompt
 from .latent import notify
 from .image import Image
 from .rectangle import Rectangle
+from .anima import AnimaPipeline, inpaint_steps
 
 from dataclasses import dataclass
 import torch
 import gc
 import PIL.Image
+import PIL.ImageFilter
 
 initialized = False
 
@@ -84,7 +86,9 @@ def increase_detail(
 
     global initialized
 
-    if pipe.inpaint is None:
+    is_anima = isinstance(pipe.generate, AnimaPipeline)
+
+    if pipe.inpaint is None and not is_anima:
         raise ValueError("detailing is not supported for this model")
 
     if not initialized:
@@ -121,25 +125,57 @@ def increase_detail(
 
         mask = prediction.masks[i]
         mask = mask_preprocess([mask], 4)[0]
-        mask = pipe.inpaint.mask_processor.blur(mask, blur_factor=4)
 
-        image = pipe.inpaint(
-            image=image,
-            mask_image=mask,
-            strength=detail.strength / 100.0,
-            padding_mask_crop=detail.padding,
-            num_inference_steps=recipe.steps,
-            guidance_scale=recipe.guidance,
-            prompt_embeds=prompt.embeds,
-            pooled_prompt_embeds=prompt.pooled,
-            negative_prompt_embeds=prompt.negative_embeds,
-            negative_pooled_prompt_embeds=prompt.negative_pooled,
-            width=recipe.size.width,
-            height=recipe.size.height,
-            generator=generator,
-            callback_on_step_end=notify(recipe, on_progress),
-            callback_on_step_end_tensor_inputs=["latents"],
-        ).images[0]
+        if is_anima:
+            # Anima native inpainting: the white region is regenerated
+            # through a strength-fraction of the schedule while the rest
+            # of the image is preserved exactly. The detection blob is
+            # dilated by the padding (like the crop padding of the SDXL
+            # path) and feathered before it drives the regeneration.
+            strength = detail.strength / 100.0
+
+            if detail.padding > 0:
+                mask = mask.filter(PIL.ImageFilter.MaxFilter(2 * detail.padding + 1))
+
+            mask = mask.filter(PIL.ImageFilter.GaussianBlur(4))
+
+            image = pipe.generate(
+                image=image,
+                mask=mask,
+                strength=strength,
+                num_inference_steps=recipe.steps,
+                guidance_scale=recipe.guidance,
+                width=recipe.size.width,
+                height=recipe.size.height,
+                generator=generator,
+                prompt_embeds=prompt.embeds,
+                negative_prompt_embeds=prompt.negative_embeds,
+                sampler=pipe.sampler,
+                callback_on_step_end=notify(
+                    recipe, on_progress, inpaint_steps(recipe.steps, strength)
+                ),
+                callback_on_step_end_tensor_inputs=["latents"],
+            ).images[0]
+        else:
+            mask = pipe.inpaint.mask_processor.blur(mask, blur_factor=4)
+
+            image = pipe.inpaint(
+                image=image,
+                mask_image=mask,
+                strength=detail.strength / 100.0,
+                padding_mask_crop=detail.padding,
+                num_inference_steps=recipe.steps,
+                guidance_scale=recipe.guidance,
+                prompt_embeds=prompt.embeds,
+                pooled_prompt_embeds=prompt.pooled,
+                negative_prompt_embeds=prompt.negative_embeds,
+                negative_pooled_prompt_embeds=prompt.negative_pooled,
+                width=recipe.size.width,
+                height=recipe.size.height,
+                generator=generator,
+                callback_on_step_end=notify(recipe, on_progress),
+                callback_on_step_end_tensor_inputs=["latents"],
+            ).images[0]
 
         i += 1
         processed += 1

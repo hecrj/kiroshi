@@ -11,7 +11,13 @@ PREVIEW_EVERY = 1
 PREVIEW_DIV = 4
 
 
-def notify(recipe, on_progress):
+def notify(recipe, on_progress, steps=None):
+    # ``steps`` is the number of steps the sampler actually runs; for
+    # strength-sliced trajectories (inpainting) that is a tail of the
+    # recipe's schedule, not the full one.
+    if steps is None:
+        steps = recipe.steps
+
     height = ((recipe.size.height + 15) // 16) * 16
     width = ((recipe.size.width + 15) // 16) * 16
 
@@ -27,11 +33,11 @@ def notify(recipe, on_progress):
         # a suppressed preview costs nothing.
         if (
             on_progress is not None
-            and 0 < step < recipe.steps - 1
+            and 0 < step < steps - 1
             and step % PREVIEW_EVERY == 0
         ):
             on_progress(
-                step / recipe.steps,
+                step / steps,
                 lambda: to_rgb(latents, pipeline, height, width, PREVIEW_DIV),
             )
 

@@ -30,9 +30,11 @@ import struct
 import time
 from pathlib import Path
 
+import numpy as np
 import PIL.Image
 import safetensors
 import torch
+import torch.nn.functional as F
 import torchsde
 
 from diffusers import (
@@ -71,6 +73,36 @@ _SIGMA_GRID = 1000
 _ANIMA_MODEL_CHANNELS = 2048
 _ANIMA_HEAD_DIM = 128
 _ANIMA_NUM_LAYERS = 28
+
+
+def _timestep_start(steps: int, strength: float) -> int:
+    """Index of the first sigma of a ``strength``-fraction trajectory.
+
+    ``strength`` is the fraction of the denoising schedule to run (the
+    diffusers ``get_timesteps`` convention): ``1.0`` starts at full noise,
+    ``0.5`` at the middle of the grid, and ``0`` degenerates to the
+    conditioning image alone.
+    """
+    init_timestep = min(steps * strength, steps)
+    return int(max(steps - init_timestep, 0))
+
+
+def inpaint_steps(steps: int, strength: float) -> int:
+    """Number of denoising steps an Anima inpainting run at ``strength``
+    actually executes (the ``strength``-fraction tail of the schedule).
+    Used as the progress denominator of the step callback."""
+    return steps - _timestep_start(steps, strength)
+
+
+def _mask_tensor(mask: PIL.Image.Image, device: torch.device) -> torch.Tensor:
+    """A pixel-space regeneration mask as float32 ``[1, 1, H, W]``.
+
+    ``1.0`` marks the region to generate; ``0.0`` marks the conditioning
+    region. The mask is the L-mode image as provided (already blurred),
+    so the alpha gradient becomes the soft boundary between the two.
+    """
+    array = torch.from_numpy(np.asarray(mask.convert("L"), dtype=np.float32) / 255.0)
+    return array[None, None].to(device)
 
 
 def _header(path: str) -> dict:
@@ -321,13 +353,20 @@ class AnimaOutput(BaseOutput):
 
 
 class AnimaPipeline(DiffusionPipeline, AnimaLoraLoaderMixin):
-    """Anima 1.0 text-to-image pipeline.
+    """Anima 1.0 text-to-image pipeline (with native inpainting).
 
     Built from a single-file Anima checkpoint (DiT + LLM adapter) plus the
     ``anima-1.0`` reference components. The denoising loop is implemented
     directly in the sigma domain (see the module docstring), so no
     diffusers scheduler is involved. LoRA support follows
     ``AnimaLoraLoaderMixin`` (``transformer`` + ``text_conditioner``).
+
+    Inpainting (``image`` + ``mask``): the mask's white region is painted
+    1 in the DiT's padding-mask channel (the Cosmos convention, where 1
+    marks the region whose content is not real) while the rest of the
+    image is conditioned on through a ``strength``-fraction tail of the
+    sigma schedule with the known region held exactly on its noise
+    trajectory at every step.
     """
 
     model_cpu_offload_seq = "text_encoder->text_conditioner->transformer->vae"
@@ -413,6 +452,27 @@ class AnimaPipeline(DiffusionPipeline, AnimaLoraLoaderMixin):
             source_attention_mask=attention_mask,
         )
 
+    @torch.no_grad()
+    def _encode_image(self, image: PIL.Image.Image, width: int, height: int) -> torch.Tensor:
+        """Encode a PIL image into normalized float32 latents.
+
+        The exact inverse of ``_decode_latents`` (``(z - mean) / std`` of
+        the ``vae.encode`` posterior mean), so the encoded conditioning
+        round-trips through the same normalization the sampling loop
+        operates in. The posterior mean (``mode()``) is used so the
+        conditioning is deterministic for a given image.
+        """
+        z_dim = self.vae.config.z_dim
+        device = self._execution_device
+        dtype = self.vae.dtype
+
+        pixels = self.image_processor.preprocess(image, height=height, width=width)
+        encoded = self.vae.encode(pixels.to(device=device, dtype=dtype)[:, :, None]).latent_dist.mode()
+
+        latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, z_dim, 1, 1, 1).to(device)
+        latents_std = torch.tensor(self.vae.config.latents_std).view(1, z_dim, 1, 1, 1).to(device)
+        return ((encoded - latents_mean) / latents_std).float()
+
     def _decode_latents(self, latents: torch.Tensor) -> PIL.Image.Image:
         z_dim = self.vae.config.z_dim
         dtype = self.vae.dtype
@@ -438,6 +498,9 @@ class AnimaPipeline(DiffusionPipeline, AnimaLoraLoaderMixin):
         height: int = 1024,
         generator: torch.Generator | None = None,
         sampler: Sampler = Sampler.EULER_A,
+        image: PIL.Image.Image | None = None,
+        mask: PIL.Image.Image | None = None,
+        strength: float = 1.0,
         callback_on_step_end=None,
         callback_on_step_end_tensor_inputs: tuple[str, ...] = ("latents",),
         **kwargs,
@@ -456,17 +519,64 @@ class AnimaPipeline(DiffusionPipeline, AnimaLoraLoaderMixin):
             generator = torch.Generator(device=device)
         # ComfyUI's ``prepare_noise`` draws the initial noise on CPU in
         # float32 and casts it to the latent dtype — mirror that so the
-        # initial latent is bit-identical for a given seed.
+        # initial latent is bit-identical for a given seed. One noise
+        # tensor is drawn for the whole trajectory (the ComfyUI
+        # convention); inpainting additionally reuses it for its
+        # conditioning-region renoising.
         gen_device = generator.device if generator.device.type in ("cpu", "cuda") else device
-        latents = torch.randn(
+        init_noise = torch.randn(
             (1, self.num_channels_latents, 1, latent_h, latent_w),
             dtype=torch.float32,
             generator=generator,
             device=gen_device,
-        ).to(dtype=dtype, device=device)
+        )
 
-        # Zero pixel-space padding mask (T2I: no conditioning region).
-        padding_mask = torch.zeros((1, 1, height, width), device=device, dtype=dtype)
+        if image is not None:
+            # Inpainting: ``mask`` marks the region to regenerate (white);
+            # everything else is conditioned on ``image``.
+            if mask is None:
+                raise ValueError("Anima inpainting requires a mask (white = region to regenerate)")
+            if not 0.0 < strength <= 1.0:
+                raise ValueError(f"Anima inpainting strength must be in (0, 1], got {strength}")
+
+            original_size = (image.width, image.height)
+            if original_size != (width, height):
+                image = image.resize((width, height), PIL.Image.Resampling.BILINEAR)
+                mask = mask.resize((width, height), PIL.Image.Resampling.BILINEAR)
+
+            # Conditioning image as float32 normalized latents.
+            image_latents = self._encode_image(image, width, height)
+
+            # Pixel-space regeneration mask (float32, 1.0 = regenerate).
+            gen = _mask_tensor(mask, device)
+
+            # The per-step re-blend and the final snap operate on latents,
+            # while the DiT resizes its padding mask from pixel space
+            # itself — keep one mask per resolution.
+            blend = F.interpolate(
+                gen, size=(latent_h, latent_w), mode="bilinear", align_corners=False
+            )
+            keep = 1.0 - blend
+
+            # The DiT's padding-mask channel follows the Cosmos training
+            # convention, where 1 marks the region whose content is not
+            # real (aspect-ratio padding), so the region to regenerate is
+            # painted with 1 and the conditioning region with 0.
+            padding_mask = gen.to(dtype)
+
+            eps = init_noise.to(device=device)
+            t_start = _timestep_start(num_inference_steps, strength)
+        else:
+            original_size = None
+            image_latents = None
+            gen = None
+            blend = None
+            keep = None
+            eps = None
+            t_start = 0
+
+            # Zero pixel-space padding mask (T2I: no conditioning region).
+            padding_mask = torch.zeros((1, 1, height, width), device=device, dtype=dtype)
 
         if negative_prompt_embeds is None or negative_prompt_embeds is prompt_embeds:
             guidance = 1.0
@@ -486,6 +596,14 @@ class AnimaPipeline(DiffusionPipeline, AnimaLoraLoaderMixin):
             # model always sees its own dtype (ComfyUI ``apply_model`` does
             # ``xc = xc.to(dtype)`` per forward).
             x_model = x.to(dtype)
+            if image_latents is not None:
+                # Keep the conditioning region exactly on its noise
+                # trajectory at the current sigma — ``(1 - s) * x0 + s *
+                # eps`` is the exact distribution of the known pixels at
+                # time ``s`` — while the region to regenerate keeps the
+                # sampler state.
+                s = float(sigma)
+                x_model = (keep * ((1.0 - s) * image_latents + s * eps) + blend * x_model).to(dtype)
             if math.isclose(guidance, 1.0):
                 v = self.transformer(
                     hidden_states=x_model,
@@ -511,13 +629,35 @@ class AnimaPipeline(DiffusionPipeline, AnimaLoraLoaderMixin):
             return x - v.float() * sigma
 
         name, schedule, sampler_fn = _SAMPLERS[sampler]
-        sigmas = schedule(num_inference_steps, device)
+        # Inpainting runs only the ``strength``-fraction tail of the
+        # schedule; text-to-image (``t_start == 0``) is unchanged.
+        sigmas = schedule(num_inference_steps, device)[t_start:]
 
         seed = generator.initial_seed()
 
+        if image_latents is not None:
+            # The conditioning image noised to the first sigma — the
+            # exact trajectory state of the encoded image at ``s0``
+            # (diffusers' ``scale_noise`` convention). At full strength
+            # this is pure noise (text-to-image in the masked region);
+            # at lower strengths the region to regenerate starts close
+            # to the image, so sampling refines it instead of
+            # overwriting it.
+            s0 = float(sigmas[0])
+            latents = (1.0 - s0) * image_latents + s0 * eps
+        else:
+            latents = init_noise.to(dtype=dtype, device=device)
+
         def callback(i: int, x: torch.Tensor, sigma: torch.Tensor) -> None:
             if callback_on_step_end is not None:
-                callback_on_step_end(self, i, float(sigma), {"latents": x})
+                preview = x
+                if image_latents is not None:
+                    # Offer the true trajectory state: the conditioning
+                    # region renoised to the current sigma, so previews
+                    # do not show drift outside the painted region.
+                    s = float(sigma)
+                    preview = keep * ((1.0 - s) * image_latents + s * eps) + blend * x
+                callback_on_step_end(self, i, float(sigma), {"latents": preview})
 
         if name == "euler_ancestral":
             # ComfyUI's ``default_noise_sampler``: independent per-step
@@ -536,7 +676,17 @@ class AnimaPipeline(DiffusionPipeline, AnimaLoraLoaderMixin):
             )
             latents = sampler_fn(predict, latents, sigmas, noise, callback)
 
-        return AnimaOutput(images=[self._decode_latents(latents)])
+        if image_latents is not None:
+            # Snap the conditioning region to the exact image latents:
+            # the final x0 estimate covers the whole image and would
+            # otherwise leave a faint drift outside the painted region.
+            latents = keep * image_latents + blend * latents
+
+        image = self._decode_latents(latents)
+        if original_size is not None and (image.width, image.height) != original_size:
+            image = image.resize(original_size, PIL.Image.Resampling.BILINEAR)
+
+        return AnimaOutput(images=[image])
 
 
 # ---------------------------------------------------------------------------
