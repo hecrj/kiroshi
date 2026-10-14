@@ -9,6 +9,7 @@ pub enum Sampler {
     DPMSDEKarras,
     DPM2MKarras,
     DPM2MSDEKarras,
+    ERSDE,
 }
 
 impl Sampler {
@@ -17,6 +18,7 @@ impl Sampler {
         Self::DPMSDEKarras,
         Self::DPM2MKarras,
         Self::DPM2MSDEKarras,
+        Self::ERSDE,
     ];
 }
 
@@ -27,6 +29,7 @@ impl fmt::Display for Sampler {
             Sampler::DPMSDEKarras => "DPM++ SDE Karras",
             Sampler::DPM2MKarras => "DPM++ 2M Karras",
             Sampler::DPM2MSDEKarras => "DPM++ 2M SDE Karras",
+            Sampler::ERSDE => "ER SDE",
         })
     }
 }

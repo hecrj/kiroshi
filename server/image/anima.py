@@ -335,11 +335,73 @@ def _sample_dpmpp_sde(predict, x: torch.Tensor, sigmas: torch.Tensor, noise, cal
     return x
 
 
+def _sample_er_sde(predict, x: torch.Tensor, sigmas: torch.Tensor, noise, callback) -> torch.Tensor:
+    """``sample_er_sde`` — the VP ER-SDE-Solver-3 (arXiv 2309.06169)."""
+    sigmas = _offset_first_sigma_for_snr(sigmas)
+    num_integration_points = 200.0
+    point_indice = torch.arange(0, num_integration_points, dtype=torch.float32, device=x.device)
+
+    def noise_scaler(y: torch.Tensor) -> torch.Tensor:
+        return y * ((y**0.3).exp() + 10.0)
+
+    # er_lambda_t = sigma_t / alpha_t; with the flow convention
+    # (alpha = 1 - sigma) this is the negated half-log-SNR.
+    er_lambdas = _flow_lambda(sigmas).neg().exp()
+
+    old_denoised = None
+    old_denoised_d = None
+
+    for i in range(len(sigmas) - 1):
+        callback(i, x, sigmas[i])
+        denoised = predict(x, sigmas[i])
+        # The higher stages use as many previous estimates as there
+        # have been steps so far.
+        stage_used = min(3, i + 1)
+        if sigmas[i + 1] == 0:
+            x = denoised
+        else:
+            er_lambda_s, er_lambda_t = er_lambdas[i], er_lambdas[i + 1]
+            alpha_s = sigmas[i] / er_lambda_s
+            alpha_t = sigmas[i + 1] / er_lambda_t
+            r_alpha = alpha_t / alpha_s
+            r = noise_scaler(er_lambda_t) / noise_scaler(er_lambda_s)
+
+            # Stage 1: Euler
+            x = r_alpha * r * x + alpha_t * (1.0 - r) * denoised
+
+            if stage_used >= 2:
+                dt = er_lambda_t - er_lambda_s
+                lambda_step_size = -dt / num_integration_points
+                lambda_pos = er_lambda_t + point_indice * lambda_step_size
+                scaled_pos = noise_scaler(lambda_pos)
+
+                # Stage 2
+                s = torch.sum(1 / scaled_pos) * lambda_step_size
+                denoised_d = (denoised - old_denoised) / (er_lambda_s - er_lambdas[i - 1])
+                x = x + alpha_t * (dt + s * noise_scaler(er_lambda_t)) * denoised_d
+
+                if stage_used >= 3:
+                    # Stage 3
+                    s_u = torch.sum((lambda_pos - er_lambda_s) / scaled_pos) * lambda_step_size
+                    denoised_u = (denoised_d - old_denoised_d) / ((er_lambda_s - er_lambdas[i - 2]) / 2)
+                    x = x + alpha_t * ((dt ** 2) / 2 + s_u * noise_scaler(er_lambda_t)) * denoised_u
+                old_denoised_d = denoised_d
+
+            # SDE noise (independent per step, as in ComfyUI's
+            # ``default_noise_sampler``).
+            x = x + alpha_t * noise(x) * (
+                er_lambda_t**2 - er_lambda_s**2 * r**2
+            ).sqrt().nan_to_num(nan=0.0)
+        old_denoised = denoised
+    return x
+
+
 _SAMPLERS = {
     Sampler.EULER_A: ("euler_ancestral", _simple_sigmas, _sample_euler_ancestral),
     Sampler.DPM_SDE_KARRAS: ("dpmpp_sde", _karras_sigmas, _sample_dpmpp_sde),
     Sampler.DPM_2M_KARRAS: ("dpmpp_2m", _karras_sigmas, _sample_dpmpp_2m),
     Sampler.DPM_2M_SDE_KARRAS: ("dpmpp_2m_sde", _karras_sigmas, _sample_dpmpp_2m_sde),
+    Sampler.ER_SDE: ("er_sde", _simple_sigmas, _sample_er_sde),
 }
 
 
@@ -659,7 +721,7 @@ class AnimaPipeline(DiffusionPipeline, AnimaLoraLoaderMixin):
                     preview = keep * ((1.0 - s) * image_latents + s * eps) + blend * x
                 callback_on_step_end(self, i, float(sigma), {"latents": preview})
 
-        if name == "euler_ancestral":
+        if name in ("euler_ancestral", "er_sde"):
             # ComfyUI's ``default_noise_sampler``: independent per-step
             # Gaussian noise; the CPU generator seed is offset by +1.
             rng_seed = seed + 1 if (seed is not None and device.type == "cpu") else seed

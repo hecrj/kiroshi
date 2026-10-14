@@ -215,6 +215,9 @@ class Pipe:
                     else "sde-dpmsolver++",
                 )
 
+            case _:
+                raise ValueError(f"sampler {sampler.name.lower()} is not supported for this model")
+
         self.sampler = sampler
         self.inpaint = AutoPipelineForInpainting.from_pipe(self.generate)
 

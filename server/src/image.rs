@@ -40,6 +40,7 @@ impl From<image::Definition> for Recipe {
                 Sampler::DPMSDEKarras => "dpm++_sde_karras",
                 Sampler::DPM2MKarras => "dpm++_2m_karras",
                 Sampler::DPM2MSDEKarras => "dpm++_2m_sde_karras",
+                Sampler::ERSDE => "er_sde",
             }
             .to_owned(),
             steps: definition.steps,

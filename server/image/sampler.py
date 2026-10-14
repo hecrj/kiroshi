@@ -6,6 +6,7 @@ class Sampler(Enum):
     DPM_SDE_KARRAS = 1
     DPM_2M_KARRAS = 2
     DPM_2M_SDE_KARRAS = 3
+    ER_SDE = 4
 
     def parse(sampler: str) -> "Sampler":
         return {
@@ -13,4 +14,5 @@ class Sampler(Enum):
             "dpm++_sde_karras": Sampler.DPM_SDE_KARRAS,
             "dpm++_2m_karras": Sampler.DPM_2M_KARRAS,
             "dpm++_2m_sde_karras": Sampler.DPM_2M_SDE_KARRAS,
+            "er_sde": Sampler.ER_SDE,
         }[sampler]
