@@ -167,7 +167,8 @@ def increase_detail(
                 prompt_embeds=prompt.embeds,
                 negative_prompt_embeds=prompt.negative_embeds,
                 sampler=pipe.sampler,
-                pag_scale=recipe.pag.scale if recipe.pag else 0,
+                # PAG is disabled on the Anima detail path: it consistently
+                # produced confetti in the regenerated region.
                 callback_on_step_end=notify(
                     recipe, on_progress, inpaint_steps(recipe.steps, strength)
                 ),
