@@ -167,6 +167,7 @@ def increase_detail(
                 prompt_embeds=prompt.embeds,
                 negative_prompt_embeds=prompt.negative_embeds,
                 sampler=pipe.sampler,
+                pag_scale=recipe.pag.scale if recipe.pag else 0,
                 callback_on_step_end=notify(
                     recipe, on_progress, inpaint_steps(recipe.steps, strength)
                 ),

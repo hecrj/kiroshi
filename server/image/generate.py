@@ -27,10 +27,12 @@ def generate(
 
         if isinstance(pipe.generate, AnimaPipeline):
             # Flow-matching pipeline: single fixed-length conditioning tensor
-            # (Qwen3-0.6B + T5 -> LLM adapter), no pooled embeddings or PAG.
+            # (Qwen3-0.6B + T5 -> LLM adapter), no pooled embeddings. PAG is
+            # the pipeline-native perturbed-attention guidance.
             kwargs = dict(
                 prompt_embeds=prompt.embeds,
                 sampler=pipe.sampler,
+                pag_scale=recipe.pag.scale if recipe.pag else 0,
             )
             if prompt.negative_embeds is not None:
                 kwargs["negative_prompt_embeds"] = prompt.negative_embeds

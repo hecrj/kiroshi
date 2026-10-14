@@ -224,6 +224,36 @@ class _BrownianTreeNoise:
         return w * (self.sign * sign) / math.sqrt(abs(t1 - t0))
 
 
+class _CosmosPagAttnProcessor:
+    """Perturbed-Attention Guidance (PAG) processor for the Cosmos self-
+    attention (``attn1``).
+
+    Replaces the attention output with the raw ``value`` projection
+    (identity attention) — the "perturbed" forward pass that PAG uses as its
+    guidance negative (https://arxiv.org/abs/2403.17377). Applied to
+    self-attention only, where the value projection has the same length as
+    the query.
+    """
+
+    def __call__(
+        self,
+        attn,
+        hidden_states: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+        attention_mask: torch.Tensor | None = None,
+        image_rotary_emb: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        value = attn.to_v(encoder_hidden_states)
+        value = value.unflatten(2, (attn.heads, -1)).transpose(1, 2)  # [B, H, N, D]
+        attn_output = value.transpose(1, 2)  # identity attention: [B, N, H, D]
+        hidden_states = attn_output.flatten(2, 3)
+        hidden_states = attn.to_out[0](hidden_states)
+        hidden_states = attn.to_out[1](hidden_states)
+        return hidden_states
+
+
 def _sample_euler_ancestral(predict, x: torch.Tensor, sigmas: torch.Tensor, noise, callback) -> torch.Tensor:
     """``sample_euler_ancestral_RF`` (the CONST/flow variant)."""
     for i in range(len(sigmas) - 1):
@@ -564,6 +594,14 @@ class AnimaPipeline(DiffusionPipeline, AnimaLoraLoaderMixin):
         image: PIL.Image.Image | None = None,
         mask: PIL.Image.Image | None = None,
         strength: float = 1.0,
+        pag_scale: float = 0.0,
+        # Default (when ``pag_scale > 0``): perturb the last 8 blocks over
+        # the first 40% of the trajectory — the DiT analogue of SDXL's
+        # "mid block, early steps" PAG. A negative ``pag_layers`` means
+        # "last N" blocks; ``None`` means all blocks.
+        pag_layers: int | list[int] | None = -8,
+        pag_start: float = 0.0,
+        pag_stop: float = 0.4,
         callback_on_step_end=None,
         callback_on_step_end_tensor_inputs: tuple[str, ...] = ("latents",),
         **kwargs,
@@ -675,6 +713,7 @@ class AnimaPipeline(DiffusionPipeline, AnimaLoraLoaderMixin):
                     padding_mask=padding_mask,
                     return_dict=False,
                 )[0]
+                cond_pred = v
             else:
                 x_doubled = torch.cat([x_model, x_model])
                 context = torch.cat([negative_prompt_embeds, prompt_embeds])
@@ -686,7 +725,34 @@ class AnimaPipeline(DiffusionPipeline, AnimaLoraLoaderMixin):
                     return_dict=False,
                 )[0]
                 neg, pos = out.chunk(2)
+                cond_pred = pos
                 v = neg + guidance * (pos - neg)
+            # PAG: run one perturbed-attention forward (identity attention in
+            # the selected self-attention layers). In the Cosmos DiT the
+            # self-attention is the model's main detail builder, so the
+            # perturbed (identity-attention) forward is the *less detailed*
+            # estimate and the guidance steers from it toward the
+            # conditional one: ``v += (pag - cond) * scale``. This is the
+            # opposite sign to the UNet-based PAG reference, which perturbs a
+            # minor refinement block rather than the model's main feature
+            # builder.
+            if pag_active[0]:
+                blocks = self.transformer.transformer_blocks
+                original = {idx: blocks[idx].attn1.processor for idx in pag_block_indices}
+                for idx in pag_block_indices:
+                    blocks[idx].attn1.set_processor(pag_processor)
+                try:
+                    v_pag = self.transformer(
+                        hidden_states=x_model,
+                        timestep=timestep,
+                        encoder_hidden_states=prompt_embeds,
+                        padding_mask=padding_mask,
+                        return_dict=False,
+                    )[0]
+                finally:
+                    for idx, proc in original.items():
+                        blocks[idx].attn1.set_processor(proc)
+                v = v + (v_pag - cond_pred) * pag_scale
             # x0 = x - sigma * v, in float32 like ComfyUI's
             # ``calculate_denoised(sigma, model_output.float(), x)``.
             return x - v.float() * sigma
@@ -711,7 +777,37 @@ class AnimaPipeline(DiffusionPipeline, AnimaLoraLoaderMixin):
         else:
             latents = init_noise.to(dtype=dtype, device=device)
 
+        # PAG (Perturbed-Attention Guidance) configuration. When enabled
+        # (``pag_scale > 0``) the selected self-attention layers return the
+        # raw value projection (identity attention) for the pag pass, which
+        # is used as the guidance negative. The step range is a fraction of
+        # the trajectory, like ComfyUI's PAG node.
+        num_steps = len(sigmas) - 1
+        if pag_scale > 0.0:
+            n_blocks = len(self.transformer.transformer_blocks)
+            if pag_layers is None:
+                pag_block_indices = list(range(n_blocks))
+            elif isinstance(pag_layers, int):
+                # Negative means "last N" blocks (the high-level ones).
+                pag_block_indices = (
+                    list(range(pag_layers)) if pag_layers >= 0
+                    else list(range(n_blocks + pag_layers, n_blocks))
+                )
+            else:
+                pag_block_indices = list(pag_layers)
+            pag_start_step = int(pag_start * num_steps)
+            pag_stop_step = int(pag_stop * num_steps)
+            pag_processor = _CosmosPagAttnProcessor()
+        else:
+            pag_block_indices = []
+            pag_start_step = pag_stop_step = 0
+            pag_processor = None
+        # Set by ``callback`` (which knows the step index) before each
+        # ``predict`` call.
+        pag_active = [False]
+
         def callback(i: int, x: torch.Tensor, sigma: torch.Tensor) -> None:
+            pag_active[0] = pag_processor is not None and pag_start_step <= i < pag_stop_step
             if callback_on_step_end is not None:
                 preview = x
                 if image_latents is not None:
