@@ -16,7 +16,7 @@ def generate(
     recipe: Recipe,
     first_frame: Image,
     last_frame: Image | None,
-    on_progress: Callable[[float, PIL.Image.Image], None] | None = None,
+    on_progress: Callable[[float, Callable[[], PIL.Image.Image]], None] | None = None,
 ) -> Video:
     ImagePipe.clear()
     gc.collect()

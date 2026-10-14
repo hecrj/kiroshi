@@ -13,7 +13,9 @@ import torch
 def generate(
     recipe: Recipe,
     cpu_offload: bool = False,
-    on_progress: Callable[[float, PIL.Image.Image], None] | None = None,
+    # on_progress(ratio, preview): preview is a lambda that decodes the
+    # preview image; only call it when the frame will actually be sent.
+    on_progress: Callable[[float, Callable[[], PIL.Image.Image]], None] | None = None,
 ) -> PIL.Image.Image:
     with Pipe.acquire(recipe, cpu_offload) as pipe:
         prompt = Prompt(pipe.compel, recipe.prompt, recipe.negative_prompt)

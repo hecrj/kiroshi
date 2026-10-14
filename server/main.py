@@ -151,6 +151,10 @@ async def run(f, writer, message, *args):
             if ratio <= preview_after:
                 return
 
+            # `preview` is a lambda: only decode now that the frame will
+            # be sent — a preview frame costs as much as the final image
+            # for the flow models.
+            preview = preview()
             preview = preview.filter(PIL.ImageFilter.GaussianBlur)
             preview.putalpha(255)
 

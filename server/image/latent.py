@@ -1,5 +1,14 @@
 import PIL.Image
 import torch
+import torch.nn.functional as F
+
+# A preview frame is a VAE decode at generation resolution — for the
+# flow models (Anima / Krea 2) as expensive as the final image — so
+# previews are throttled (one every Nth step) and downsampled (decoded
+# at 1/div of the latent spatial size; decode cost scales with pixel
+# count). Retune here if that ever feels too coarse or too fine.
+PREVIEW_EVERY = 1
+PREVIEW_DIV = 4
 
 
 def notify(recipe, on_progress):
@@ -9,27 +18,41 @@ def notify(recipe, on_progress):
     def on_step_end(pipeline, step, timestep, callback_kwargs):
         latents = callback_kwargs["latents"]
 
-        if on_progress is not None:
-            on_progress(step / recipe.steps, to_rgb(latents, pipeline, height, width))
+        # Only offer a preview when the step warrants one: not the first
+        # step (the latents are still pure noise), not every step
+        # (PREVIEW_EVERY), and not the final step — the
+        # full-resolution decode of the final image follows
+        # immediately. The decode is handed over as a lambda and only
+        # runs if on_progress passes its own `preview_after` check, so
+        # a suppressed preview costs nothing.
+        if (
+            on_progress is not None
+            and 0 < step < recipe.steps - 1
+            and step % PREVIEW_EVERY == 0
+        ):
+            on_progress(
+                step / recipe.steps,
+                lambda: to_rgb(latents, pipeline, height, width, PREVIEW_DIV),
+            )
 
         return callback_kwargs
 
     return on_step_end
 
 
-def to_rgb(latents, pipeline=None, height=None, width=None) -> PIL.Image.Image:
+def to_rgb(latents, pipeline=None, height=None, width=None, div=1) -> PIL.Image.Image:
     from .anima import AnimaPipeline
 
     if isinstance(pipeline, AnimaPipeline):
         # Anima latents are unpacked 5D flow latents [B, 16, 1, H/8, W/8];
         # decode through the VAE (same convention as the final output).
-        return pipeline._decode_latents(latents)
+        return pipeline._decode_latents(_downsample(latents, div))
 
     if pipeline is not None and hasattr(pipeline, "_unpack_latents"):
         # Flow-matching (Krea 2) pipelines hold packed 16-channel latents;
         # the SDXL-style channel hack below would be nonsense, so decode
         # through the VAE instead.
-        latents = pipeline._unpack_latents(latents, height, width).to(
+        latents = _downsample(pipeline._unpack_latents(latents, height, width), div).to(
             pipeline.vae.dtype
         )
 
@@ -66,3 +89,16 @@ def to_rgb(latents, pipeline=None, height=None, width=None) -> PIL.Image.Image:
     image_array = image_array.transpose(1, 2, 0)
 
     return PIL.Image.fromarray(image_array)
+
+
+def _downsample(latents: torch.Tensor, div: int) -> torch.Tensor:
+    """Spatially shrink a 5D flow latent [B, C, 1, H, W] by ``div`` so a
+    preview VAE decode runs on 1/div**2 of the pixels (decode cost scales
+    with pixel count). The mean/std normalization commutes with the
+    average pooling, so this is equivalent to downsampling after it."""
+    if div <= 1:
+        return latents
+
+    h, w = latents.shape[-2:]
+    size = (max(1, h // div), max(1, w // div))
+    return F.interpolate(latents[:, :, 0], size=size, mode="area").unsqueeze(2)
