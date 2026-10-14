@@ -169,6 +169,18 @@ wheels = [
 ]
 
 [[package]]
+name = "comfy-kitchen"
+version = "0.2.37"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ab/3b/77e68e596cb8097e10753b8095164d07b79b976208da8bde3371ecbfc558/comfy_kitchen-0.2.37-cp312-abi3-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:0f872625af6b3d1f96f18c54b4ef11129df2d9178d28946e1f3d737b8252416d", size = 33278965, upload-time = "2026-10-02T18:26:46.383Z" },
+    { url = "https://files.pythonhosted.org/packages/19/04/d24939d30b077679bfc8bf4a53c7392f9d8650df7ce69164238a673753a1/comfy_kitchen-0.2.37-cp312-abi3-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:03cca0d10c314aaa13bff8f9422d03974221a344162b23d4f10d27eb2a35d0e8", size = 59238324, upload-time = "2026-10-02T18:26:49.471Z" },
+    { url = "https://files.pythonhosted.org/packages/bf/0a/96c1141180bdc4dce2664cd9316390069c66c6f03e79963a17f252b4b730/comfy_kitchen-0.2.37-cp312-abi3-win_amd64.whl", hash = "sha256:31e1b59351d10374b6351f62a9130712e0cb06c90f059c25522ac1f79249fdb8", size = 48759733, upload-time = "2026-10-02T18:26:52.869Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/e8/cc4ccd684eb3c81ce3bc816ec31d414781c35f020e9811560b8bb79d2b10/comfy_kitchen-0.2.37-cp312-abi3-win_arm64.whl", hash = "sha256:25445cedef6aff9b7d3dea3514dc77ab5b757e729d952dea94f7108a3a70c888", size = 7666973, upload-time = "2026-10-02T18:26:55.46Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/08/0a904ae1a1b82f57e7990eee8d93d48466a185934aa585cc625cdb27761e/comfy_kitchen-0.2.37-py3-none-any.whl", hash = "sha256:b626bd51ff45937f1446accf078ccea9d11c3686ffa0c89b0c1305d66d765afe", size = 232534, upload-time = "2026-10-02T18:26:57.259Z" },
+]
+
+[[package]]
 name = "compel"
 version = "2.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -470,12 +482,15 @@ source = { virtual = "." }
 dependencies = [
     { name = "accelerate" },
     { name = "adetailer" },
+    { name = "comfy-kitchen" },
     { name = "compel" },
     { name = "diffusers" },
     { name = "ftfy" },
     { name = "numpy" },
+    { name = "peft" },
     { name = "pillow" },
     { name = "realesrgan" },
+    { name = "safetensors" },
     { name = "torch" },
     { name = "torchvision" },
     { name = "transformers" },
@@ -485,12 +500,15 @@ dependencies = [
 requires-dist = [
     { name = "accelerate", specifier = ">=1.15.0" },
     { name = "adetailer", git = "https://github.com/hecrj/adetailer.git?rev=25e7509fe018de8aa063a5f1902598f5eda0c06c" },
+    { name = "comfy-kitchen", specifier = ">=0.2.37" },
     { name = "compel", specifier = ">=2.5.1" },
     { name = "diffusers", specifier = ">=0.41.0" },
     { name = "ftfy", specifier = ">=6.3.1" },
     { name = "numpy", specifier = ">=2.5.4" },
+    { name = "peft", specifier = ">=0.21.2" },
     { name = "pillow", specifier = ">=12.3.0" },
     { name = "realesrgan", git = "https://github.com/hecrj/RealESRGAN.git?rev=8bf30248f1acccb0808378a00d08c3ba3d473180" },
+    { name = "safetensors", specifier = ">=0.6.0" },
     { name = "torch", specifier = ">=2.14.1" },
     { name = "torchvision", specifier = ">=0.29.1" },
     { name = "transformers", specifier = ">=5.19.0" },
@@ -856,6 +874,27 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz", hash = "sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79", size = 313412, upload-time = "2026-08-04T18:15:28.737Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl", hash = "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c", size = 129956, upload-time = "2026-08-04T18:15:27.159Z" },
+]
+
+[[package]]
+name = "peft"
+version = "0.21.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "accelerate" },
+    { name = "huggingface-hub" },
+    { name = "numpy" },
+    { name = "packaging" },
+    { name = "psutil" },
+    { name = "pyyaml" },
+    { name = "safetensors" },
+    { name = "torch" },
+    { name = "tqdm" },
+    { name = "transformers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/80/af/2e08abf1cd3b8792a02f5116808f2398c2f77ecdff801ced2ce16007a6f9/peft-0.21.2.tar.gz", hash = "sha256:b803ccfb3f3f316004d850284306687833a2235ea278fb56abc856203456142e", size = 983614, upload-time = "2026-10-01T10:26:36.129Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/70/0b/59441cdbfdd342ed03c08af90a2fe16173f0cd48ab219f523b39ca059a79/peft-0.21.2-py3-none-any.whl", hash = "sha256:106ab6077ff72c54d21577f9af5970e34bac7582cb14209f7b2b511e322a4eae", size = 835427, upload-time = "2026-10-01T10:26:34.085Z" },
 ]
 
 [[package]]

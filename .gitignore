@@ -2,3 +2,7 @@
 *.pth
 *.pth.lock
 __pycache__
+
+# Krea 2 dequantization cache (test sandbox artifact; production uses
+# ~/.cache/kiroshi or $KIROSHI_CACHE_DIR)
+/.cache/

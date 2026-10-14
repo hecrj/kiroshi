@@ -20,9 +20,13 @@ RUN apt-get update && \
     apt install -y --no-install-recommends \
     software-properties-common \
     git \
+    git-lfs \
     build-essential \
     libgl-dev \
     curl
+
+# Enable Git LFS (model reference components are LFS-backed git repos)
+RUN git lfs install
 
 # Install uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -48,6 +52,17 @@ RUN curl -L -o weights/4x-UltraSharp.pth https://huggingface.co/hecrj/RealESRGAN
 # Download face and hand detection models
 RUN curl -L -o weights/face_yolov8n.pt https://huggingface.co/Bingsu/adetailer/resolve/53cc19de382014514d9d4038601d261a7faa9b7b/face_yolov8n.pt?download=true
 RUN curl -L -o weights/hand_yolov9c.pt https://huggingface.co/Bingsu/adetailer/resolve/53cc19de382014514d9d4038601d261a7faa9b7b/hand_yolov9c.pt?download=true
+
+# Krea 2 reference components: the full reference dir (Qwen3-VL-4B text
+# encoder, Qwen-Image VAE, tokenizer and pipeline config) is the hecrj/krea-2
+# git repository (tracked as the server/templates/krea-2 submodule, with the
+# safetensors via Git LFS). It is cloned only when built with
+# --build-arg WITH_KREA2=1 (off by default; using a Krea 2 model without it
+# fails with a clear error).
+ARG WITH_KREA2=0
+RUN if [ "$WITH_KREA2" = "1" ]; then \
+    git clone --depth 1 https://huggingface.co/hecrj/krea-2 templates/krea-2; \
+fi
 
 # Copy server code
 COPY server/. /kiroshi

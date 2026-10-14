@@ -2,6 +2,7 @@ from .precision import Precision
 from .sampler import Sampler
 from .recipe import Recipe
 from .lora import Lora
+from .krea2 import is_krea2_file, load_krea2_pipeline
 
 from typing import Any, Iterator
 from compel import Compel, CompelForSDXL
@@ -25,7 +26,7 @@ class Pipe:
     loras: tuple[Lora]
     generate: Any
     inpaint: Any
-    compel: "Compel | CompelForSDXL"
+    compel: Any
 
     @contextmanager
     def acquire(recipe: Recipe, cpu: bool = False) -> Iterator["Pipe"]:
@@ -81,6 +82,7 @@ class Pipe:
     ):
         from diffusers import (
             AutoPipelineForText2Image,
+            Krea2Pipeline,
             StableDiffusionXLPipeline,
         )
 
@@ -94,21 +96,28 @@ class Pipe:
         self.loras = loras
         self.cpu = cpu
 
-        self.generate = StableDiffusionXLPipeline.from_single_file(
-            model,
-            config="sdxl-1.0",
-            use_safetensors=True,
-            torch_dtype=precision.dtype(),
-            local_files_only=True,
-        )
-
-        if pag:
-            self.generate = AutoPipelineForText2Image.from_pipe(
-                self.generate, enable_pag=True, pag_applied_layers=["mid"]
+        if is_krea2_file(model):
+            # Krea 2: transformer-only single file (possibly quantized); VAE /
+            # text encoder / tokenizer come from the local `krea-2` reference
+            # config dir.
+            self.generate = load_krea2_pipeline(model, precision.dtype(), lora=bool(loras))
+        else:
+            self.generate = StableDiffusionXLPipeline.from_single_file(
+                model,
+                config="sdxl-1.0",
+                use_safetensors=True,
+                torch_dtype=precision.dtype(),
+                local_files_only=True,
             )
 
+            if pag:
+                self.generate = AutoPipelineForText2Image.from_pipe(
+                    self.generate, enable_pag=True, pag_applied_layers=["mid"]
+                )
+
         self.generate = self.generate.to("cuda")
-        self.generate.safety_checker = None
+        if hasattr(self.generate, "safety_checker"):
+            self.generate.safety_checker = None
 
         if loras:
             print("Fusing LoRAs...")
@@ -133,6 +142,10 @@ class Pipe:
 
         if hasattr(self.generate, "tokenizer_2"):
             self.compel = CompelForSDXL(self.generate)
+        elif isinstance(self.generate, Krea2Pipeline):
+            # Qwen3-VL based: prompt encoding goes through the pipeline's own
+            # encode_prompt (no Compel).
+            self.compel = self.generate
         else:
             self.compel = Compel(
                 tokenizer=self.generate.tokenizer,
@@ -143,7 +156,15 @@ class Pipe:
         self.resample(sampler)
 
     def resample(self, sampler: Sampler):
-        from diffusers import AutoPipelineForInpainting
+        from diffusers import AutoPipelineForInpainting, Krea2Pipeline
+
+        if isinstance(self.generate, Krea2Pipeline):
+            # Flow-matching pipelines keep their own
+            # FlowMatchEulerDiscreteScheduler (the sampler is not applicable)
+            # and have no SDXL-style inpainting variant.
+            self.sampler = sampler
+            self.inpaint = None
+            return
 
         match sampler:
             case Sampler.EULER_A:

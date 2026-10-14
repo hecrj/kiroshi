@@ -2,3 +2,8 @@
 **/__pycache__
 target/
 **/.venv/
+**/*.safetensors
+# Model reference components (Krea 2 + Anima) are git submodules under
+# server/templates/; the Docker build clones them itself, so exclude them
+# from the build context.
+server/templates/

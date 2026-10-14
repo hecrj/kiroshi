@@ -84,6 +84,9 @@ def increase_detail(
 
     global initialized
 
+    if pipe.inpaint is None:
+        raise ValueError("detailing is not supported for this model")
+
     if not initialized:
         gc.collect()
         torch.cuda.empty_cache()

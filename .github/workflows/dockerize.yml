@@ -1,6 +1,11 @@
 name: Dockerize
 on:
   workflow_dispatch:
+    inputs:
+      with_krea2:
+        description: Include Krea 2 reference weights (~8.7GB)
+        type: boolean
+        default: false
   push:
     paths:
       - '.github/workflows/dockerize.yml'
@@ -39,6 +44,8 @@ jobs:
         with:
           push: true
           file: server/Dockerfile
+          build-args: |
+            WITH_KREA2=${{ inputs.with_krea2 || 'false' }}
           tags: |
             ghcr.io/${{ github.repository }}:latest
           provenance: false
