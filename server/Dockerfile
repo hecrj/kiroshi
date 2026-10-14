@@ -23,7 +23,8 @@ RUN apt-get update && \
     git-lfs \
     build-essential \
     libgl-dev \
-    curl
+    curl \
+    python3-dev
 
 # Enable Git LFS (model reference components are LFS-backed git repos)
 RUN git lfs install
@@ -62,6 +63,17 @@ RUN curl -L -o weights/hand_yolov9c.pt https://huggingface.co/Bingsu/adetailer/r
 ARG WITH_KREA2=0
 RUN if [ "$WITH_KREA2" = "1" ]; then \
     git clone --depth 1 https://huggingface.co/hecrj/krea-2 templates/krea-2; \
+fi
+
+# Anima 1.0 reference components: the full reference dir (Qwen3-0.6B text
+# encoder, Qwen-Image VAE, Qwen/T5 tokenizers) is the hecrj/anima git
+# repository (tracked as the server/templates/anima submodule, with the
+# safetensors via Git LFS). It is cloned only when built with
+# --build-arg WITH_ANIMA=1 (off by default; using an Anima model without it
+# fails with a clear error).
+ARG WITH_ANIMA=0
+RUN if [ "$WITH_ANIMA" = "1" ]; then \
+    git clone --depth 1 https://huggingface.co/hecrj/anima templates/anima; \
 fi
 
 # Copy server code

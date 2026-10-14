@@ -21,7 +21,18 @@ def generate(
 
         from diffusers import Krea2Pipeline
 
-        if isinstance(pipe.generate, Krea2Pipeline):
+        from .anima import AnimaPipeline
+
+        if isinstance(pipe.generate, AnimaPipeline):
+            # Flow-matching pipeline: single fixed-length conditioning tensor
+            # (Qwen3-0.6B + T5 -> LLM adapter), no pooled embeddings or PAG.
+            kwargs = dict(
+                prompt_embeds=prompt.embeds,
+                sampler=pipe.sampler,
+            )
+            if prompt.negative_embeds is not None:
+                kwargs["negative_prompt_embeds"] = prompt.negative_embeds
+        elif isinstance(pipe.generate, Krea2Pipeline):
             # Flow-matching pipeline: multi-layer text embeddings with an
             # attention mask, no pooled embeddings or PAG.
             kwargs = dict(

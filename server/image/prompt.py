@@ -42,7 +42,29 @@ class Prompt:
         # pipeline itself. The pipeline encodes fixed-length
         # (prefix | prompt | padding | suffix) blocks and taps a stack of
         # hidden states, so there is no Compel and no pooled embeddings.
+        #
+        # Anima (Qwen3-0.6B + T5 tokenizer + LLM adapter): same pattern, but
+        # encode_prompt returns the conditioner output directly (a single
+        # fixed-length [B, 512, D] tensor).
         from diffusers import Krea2Pipeline
+
+        from .anima import AnimaPipeline
+
+        if isinstance(compel, AnimaPipeline):
+            self.embeds = compel.encode_prompt([positive])
+            self.pooled = None
+            self.embeds_mask = None
+
+            if negative is not None:
+                self.negative_embeds = compel.encode_prompt([negative])
+                self.negative_pooled = None
+                self.negative_embeds_mask = None
+            else:
+                self.negative_embeds = None
+                self.negative_pooled = None
+                self.negative_embeds_mask = None
+
+            return
 
         if isinstance(compel, Krea2Pipeline):
             embeds, embeds_mask = compel.encode_prompt([positive])

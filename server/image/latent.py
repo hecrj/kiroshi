@@ -18,11 +18,20 @@ def notify(recipe, on_progress):
 
 
 def to_rgb(latents, pipeline=None, height=None, width=None) -> PIL.Image.Image:
+    from .anima import AnimaPipeline
+
+    if isinstance(pipeline, AnimaPipeline):
+        # Anima latents are unpacked 5D flow latents [B, 16, 1, H/8, W/8];
+        # decode through the VAE (same convention as the final output).
+        return pipeline._decode_latents(latents)
+
     if pipeline is not None and hasattr(pipeline, "_unpack_latents"):
         # Flow-matching (Krea 2) pipelines hold packed 16-channel latents;
         # the SDXL-style channel hack below would be nonsense, so decode
         # through the VAE instead.
-        latents = pipeline._unpack_latents(latents, height, width).to(pipeline.vae.dtype)
+        latents = pipeline._unpack_latents(latents, height, width).to(
+            pipeline.vae.dtype
+        )
 
         latents_mean = (
             torch.tensor(pipeline.vae.config.latents_mean)
@@ -30,8 +39,10 @@ def to_rgb(latents, pipeline=None, height=None, width=None) -> PIL.Image.Image:
             .to(latents.device, latents.dtype)
         )
         latents_std = (
-            1.0 / torch.tensor(pipeline.vae.config.latents_std)
-        ).view(1, pipeline.vae.config.z_dim, 1, 1, 1).to(latents.device, latents.dtype)
+            (1.0 / torch.tensor(pipeline.vae.config.latents_std))
+            .view(1, pipeline.vae.config.z_dim, 1, 1, 1)
+            .to(latents.device, latents.dtype)
+        )
         latents = latents / latents_std + latents_mean
 
         image = pipeline.vae.decode(latents, return_dict=False)[0][:, :, 0]

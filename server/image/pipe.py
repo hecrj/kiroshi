@@ -3,6 +3,7 @@ from .sampler import Sampler
 from .recipe import Recipe
 from .lora import Lora
 from .krea2 import is_krea2_file, load_krea2_pipeline
+from .anima import AnimaPipeline, is_anima_file, load_anima_pipeline
 
 from typing import Any, Iterator
 from compel import Compel, CompelForSDXL
@@ -98,9 +99,14 @@ class Pipe:
 
         if is_krea2_file(model):
             # Krea 2: transformer-only single file (possibly quantized); VAE /
-            # text encoder / tokenizer come from the local `krea-2` reference
-            # config dir.
+            # text encoder / tokenizer come from the `templates/krea-2`
+            # submodule.
             self.generate = load_krea2_pipeline(model, precision.dtype(), lora=bool(loras))
+        elif is_anima_file(model):
+            # Anima 1.0: DiT + LLM adapter in one single file; Qwen3-0.6B
+            # text encoder, tokenizers and VAE come from the `templates/anima`
+            # submodule.
+            self.generate = load_anima_pipeline(model, precision.dtype(), lora=bool(loras))
         else:
             self.generate = StableDiffusionXLPipeline.from_single_file(
                 model,
@@ -142,8 +148,8 @@ class Pipe:
 
         if hasattr(self.generate, "tokenizer_2"):
             self.compel = CompelForSDXL(self.generate)
-        elif isinstance(self.generate, Krea2Pipeline):
-            # Qwen3-VL based: prompt encoding goes through the pipeline's own
+        elif isinstance(self.generate, (Krea2Pipeline, AnimaPipeline)):
+            # Qwen based: prompt encoding goes through the pipeline's own
             # encode_prompt (no Compel).
             self.compel = self.generate
         else:
@@ -158,10 +164,9 @@ class Pipe:
     def resample(self, sampler: Sampler):
         from diffusers import AutoPipelineForInpainting, Krea2Pipeline
 
-        if isinstance(self.generate, Krea2Pipeline):
-            # Flow-matching pipelines keep their own
-            # FlowMatchEulerDiscreteScheduler (the sampler is not applicable)
-            # and have no SDXL-style inpainting variant.
+        if isinstance(self.generate, (Krea2Pipeline, AnimaPipeline)):
+            # Flow-matching pipelines run their own sigma-domain samplers
+            # (chosen per recipe) and have no SDXL-style inpainting variant.
             self.sampler = sampler
             self.inpaint = None
             return

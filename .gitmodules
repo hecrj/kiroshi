@@ -1,3 +1,6 @@
 [submodule "server/templates/krea-2"]
 	path = server/templates/krea-2
 	url = https://huggingface.co/hecrj/krea-2
+[submodule "server/templates/anima"]
+	path = server/templates/anima
+	url = https://huggingface.co/hecrj/anima
