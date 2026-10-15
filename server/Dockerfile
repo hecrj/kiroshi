@@ -82,4 +82,12 @@ COPY --from=build /kiroshi/target/release/kiroshi-server kiroshi
 
 ENV YOLO_VERBOSE=false
 
+# Persistent TorchInductor / Triton kernel cache, on the /models volume so the
+# one-time torch.compile kernel build (~30s for the Anima DiT) survives
+# container rebuilds/reboots. By default Inductor caches to
+# $TMPDIR/torchinductor_<user> (ephemeral) and Triton to ~/.triton; both live
+# on the mounted volume here instead.
+ENV TORCHINDUCTOR_CACHE_DIR=/models/image/.cache/torchinductor
+ENV TRITON_CACHE_DIR=/models/image/.cache/triton
+
 ENTRYPOINT ["./kiroshi"]
