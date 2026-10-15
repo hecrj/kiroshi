@@ -42,6 +42,16 @@ impl Server {
             )
         };
 
+        for volume in ["kiroshi-nv", "kiroshi-triton", "kiroshi-inductor"] {
+            let _ = process::Command::new("docker")
+                .args(["volume", "create", volume])
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .output()
+                .await;
+        }
+
         let mut process = process::Command::new("docker")
             .arg("create")
             .args(["-t", "--rm"])
@@ -49,6 +59,9 @@ impl Server {
             .args(["-p", "9149:9149"])
             .args(["-v", &image_models])
             .args(["-v", &video_models])
+            .args(["-v", "kiroshi-nv:/root/.nv"])
+            .args(["-v", "kiroshi-triton:/root/.triton"])
+            .args(["-v", "kiroshi-inductor:/root/.cache/torchinductor"])
             .arg("ghcr.io/hecrj/kiroshi/server:latest")
             .stdout(std::process::Stdio::piped())
             .stdin(std::process::Stdio::null())
