@@ -88,6 +88,12 @@ def increase_detail(
 
     global initialized
 
+    # Detailing regenerates the image, so it cannot preserve
+    # transparency: flatten to RGB here, as the server used to do at
+    # read time.
+    if image.mode == "RGBA":
+        image = image.convert("RGB")
+
     is_anima = isinstance(pipe.generate, AnimaPipeline)
 
     if pipe.inpaint is None and not is_anima:

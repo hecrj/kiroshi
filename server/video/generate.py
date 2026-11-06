@@ -34,11 +34,21 @@ def generate(
 
         framerate = 16
         generator = torch.Generator(device="cuda").manual_seed(recipe.seed)
-        image = first_frame.raw.resize((width, height))
+
+        # The flow model expects RGB frames; flatten inputs the way
+        # the server used to at read time.
+        first = first_frame.raw
+        if first.mode == "RGBA":
+            first = first.convert("RGB")
+
+        image = first.resize((width, height))
         last_image = None
 
         if last_frame is not None:
-            last_image = last_frame.raw.resize((width, height))
+            last = last_frame.raw
+            if last.mode == "RGBA":
+                last = last.convert("RGB")
+            last_image = last.resize((width, height))
 
         frames = pipe.generate(
             image=image,

@@ -118,13 +118,15 @@ async def read_image(
         rgba = await read(reader)
 
         start = time.time()
-        rgb = PIL.Image.frombytes("RGBA", (size.width, size.height), rgba).convert(
-            "RGB"
-        )
-        print(f"Converted to RGB: {time.time() - start}")
+        # The wire format is always RGBA; keep the alpha channel instead
+        # of flattening it here (its RGB values are meaningless under
+        # transparent pixels and would leak through e.g. upscaling).
+        # RGB-only consumers convert on use.
+        img = PIL.Image.frombytes("RGBA", (size.width, size.height), rgba)
+        print(f"Decoded RGBA: {time.time() - start}")
 
-        cache[h] = [rgb, None]
-        return image.Image(rgb, h)
+        cache[h] = [img, None]
+        return image.Image(img, h)
     else:
         print("[kiroshi] Image is cached")
         await send(writer, bytes([1]))
@@ -196,8 +198,12 @@ async def run(f, writer, message, *args):
 
         start = time.time()
         image = image.copy()
-        image.putalpha(255)
-        print(f"Added alpha layer: {time.time() - start}s")
+        # Only stamp an opaque alpha layer when the image does not
+        # carry its own (e.g. a transparent image produced by
+        # upscaling); the protocol always sends RGBA.
+        if image.mode != "RGBA":
+            image.putalpha(255)
+            print(f"Added alpha layer: {time.time() - start}s")
 
         start = time.time()
         await send_json(
@@ -237,7 +243,8 @@ async def run(f, writer, message, *args):
 
             image = frame.raw
             image = image.copy()
-            image.putalpha(255)
+            if image.mode != "RGBA":
+                image.putalpha(255)
 
             await send(writer, image.tobytes())
 
